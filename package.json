@@ -1,0 +1,35 @@
+{
+  "name": "cdns-pkg-ui",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "clean": "rm -rf dist",
+    "build:ext": "npm run build",
+    "build-deps": "cp server.js dist/ && cp -r certs dist/ && cp -r node_modules dist/",
+    "preview": "vite preview",
+    "server": "set -a && source .env && set +a && PORT=3001 node server.js",
+    "start:server": "set -a && source .env && set +a && PORT=3001 node server.js",
+    "start:client": "vite",
+    "start": "set -a && source .env && set +a && PORT=3001 node server.js & vite"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.0",
+    "@grpc/proto-loader": "^0.7.0",
+    "@pcln/global-header-install": "^13.0.7",
+    "@pcln/unified-schema": "latest",
+    "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "@pcln/horizon": "latest",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react-swc": "^3.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0"
+  }
+}

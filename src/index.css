@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+@import '@pcln/horizon/tailwind.css';
+@source '../node_modules/@pcln/horizon/dist';
+
+@import '@pcln/horizon/montserrat.css';
+@import '@pcln/horizon/symbols.css';
+
+* {
+  box-sizing: border-box;
+}

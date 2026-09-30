@@ -1,0 +1,27 @@
+{
+  "name": "cdns-pkg-ui",
+  "group": "Packages",
+  "flag": "cdns-pkg-ui",
+  "port": 5173,
+  "urlPath": "/cdns-pkg-ui",
+  "code": "cdns-pkg-ui",
+  "nginx": [
+    "location ^~ /cdns-pkg-ui {",
+    "  proxy_set_header X-Forwarded-Proto https;",
+    "  proxy_set_header Host $host;",
+    "  proxy_pass http://host.docker.internal:5173;",
+    "}"
+  ],
+  "services": [
+    {
+      "name": "Global Nav",
+      "env": "GLOBAL_NAV_URL",
+      "product": "sitex",
+      "url": "/global-navigation/components"
+    }
+  ],
+  "env": {
+    "APP_NAME": "cdns-pkg-ui",
+    "PORT": "3001"
+  }
+}

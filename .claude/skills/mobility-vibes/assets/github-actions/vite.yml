@@ -1,0 +1,76 @@
+# GitHub Actions workflow for Vite + React + TypeScript projects.
+# Copy to: .github/workflows/build-release.yml
+name: Build & Release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**'
+    branches:
+      - '**'
+
+jobs:
+  # Determines shared config values and deployment targets.
+  # For main/master: deploys to both qa-a and qa-b.
+  # For all other branches: deploys to qa-a only, using the branch as the deploy track.
+  set-shared-inputs:
+    runs-on:
+      group: pcln-pipeline-prod-runners-general
+    outputs:
+      stages: ${{ steps.set-stages.outputs.value }}
+      application: ${{ steps.set-shared.outputs.application }}
+      node_version: ${{ steps.set-shared.outputs.node_version }}
+      install_args: ${{ steps.set-shared.outputs.install_args }}
+    steps:
+      - name: Determine branch type
+        id: branch-type
+        run: |
+          branch="${{ github.ref_name }}"
+          echo branchType="$(echo ${branch%%/*})" >> $GITHUB_OUTPUT
+
+      - name: Determine Jira ticket info if applicable
+        id: jira
+        run: |
+          type="${{ steps.branch-type.outputs.branchType }}"
+          if [ "$type" != "adhoc" ] && [ "$type" != "chore" ]; then
+            echo jiraTicket="$(echo ${{ github.ref }} | awk '{split($0, a, "/"); split(a[4], b, "-"); print b[1]"-"b[2]}')" >> $GITHUB_OUTPUT
+          else
+            echo jiraTicket="branchMode" >> $GITHUB_OUTPUT
+          fi
+
+      - id: set-stages
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ] || [ "${{ github.ref_name }}" == "master" ]; then
+            echo 'value=[{"promotionStage": "qa-a", "versionComparisonRegex": ".*"}, {"promotionStage": "qa-b", "versionComparisonRegex": ".*"}]' >> $GITHUB_OUTPUT
+          else
+            echo 'value=[{"promotionStage": "qa-a", "versionComparisonRegex": ".*", "auto-deploy-track": "${{ steps.jira.outputs.jiraTicket }}", "auto-deploy-expiration": "Tomorrow"}]' >> $GITHUB_OUTPUT
+          fi
+
+      - id: set-shared
+        run: |
+          echo "application=${{ github.event.repository.name }}" >> $GITHUB_OUTPUT
+          echo 'node_version=[24]' >> $GITHUB_OUTPUT
+          echo 'install_args=--ignore-scripts' >> $GITHUB_OUTPUT
+
+  build_and_release:
+    needs: [set-shared-inputs]
+    uses: pcln/.github/.github/workflows/javascript-npm-release.yaml@javascript-v1
+    secrets: inherit
+    with:
+      application: ${{ needs.set-shared-inputs.outputs.application }}
+      node-version: ${{ needs.set-shared-inputs.outputs.node_version }}
+      install-args: ${{ needs.set-shared-inputs.outputs.install_args }}
+      build-command: 'clean,build:ext,build-deps'
+      lint-enabled: false
+      sonar-enabled: false
+      upload-static-assets: false
+      install-production-dependencies: true
+      build-docker: true
+      gcr-folder: rc
+      nexusiq-enforce-policy: false
+      auto-deploy-enabled: true
+      auto-deploy-team: 'rc'
+      auto-deploy-stages: ${{ needs.set-shared-inputs.outputs.stages }}
+      slack-enabled: true
+      slack-channel: '#mobility-deploy'

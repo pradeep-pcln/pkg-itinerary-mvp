@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANCUN BUNDLE | AI Travel Platform</title>
+    <!-- Load React, ReactDOM and Babel for in-browser JSX transpilation -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #059669; }
+
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slide-in-bottom { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        
+        .animate-in { animation: fade-in 0.3s ease-out; }
+        .slide-in-from-bottom-4 { animation: slide-in-bottom 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #10b981;
+            cursor: pointer;
+            box-shadow: 0 0 2px 0 rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        const apiKey = "";
+
+        const Icon = ({ name, className, size = 16 }) => {
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [name]);
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+
+        async function callGemini(prompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: "You are an expert Cancun travel specialist." }] }
+            };
+
+            let delay = 1000;
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error();
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+                } catch (err) {
+                    if (i === 4) throw err;
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        const AIRLINES = [
+            { name: "Aeromexico", price: 310 },
+            { name: "Volaris", price: 245 },
+            { name: "Delta Air Lines", price: 380 },
+            { name: "United Airlines", price: 355 },
+            { name: "American Airlines", price: 360 },
+            { name: "JetBlue Airways", price: 320 },
+            { name: "Spirit Airlines", price: 210 },
+            { name: "Frontier Airlines", price: 225 },
+        ];
+
+        const ALTERNATIVE_FLIGHTS = [
+            { id: 'f1', airline: "Aeromexico", duration: 345, durationStr: "5h 45m", class: "Clase Premier", times: "07:00 AM - 12:45 PM", priceDelta: 0, stops: "Direct" },
+            { id: 'f2', airline: "Volaris", duration: 420, durationStr: "7h 00m", class: "Basic", times: "10:30 PM - 05:30 AM", priceDelta: -145, stops: "1 Stop" },
+            { id: 'f3', airline: "Delta Air Lines", duration: 330, durationStr: "5h 30m", class: "Main Cabin", times: "09:00 AM - 02:30 PM", priceDelta: 85, stops: "Direct" },
+        ];
+
+        const ALTERNATIVE_CARS = [
+            { id: 'c1', model: "Chevrolet Suburban", category: "Full-Size SUV", transmission: "Auto", priceDelta: 0, perks: ["Group Ready", "Cooler Included"] },
+            { id: 'c2', model: "Jeep Wrangler 4xe", category: "Open Top", transmission: "Auto", priceDelta: 65, perks: ["Beach Ready", "Hybrid Mode"] },
+            { id: 'c3', model: "Nissan Versa", category: "Economy", transmission: "Auto", priceDelta: -40, perks: ["Easy Parking"] },
+        ];
+
+        const PACKAGES = [
+            {
+                id: 1,
+                destination: "Cancun Hotel Zone",
+                basePrice: 1650,
+                discount: "ALL-INCLUSIVE",
+                rating: 4.8,
+                reviews: 2105,
+                lat: 45, lon: 35,
+                hotel: {
+                    name: "Hyatt Zilara Cancun",
+                    stars: 5,
+                    type: "Oceanfront Junior Suite",
+                    image: "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&q=80&w=800",
+                    perks: ["Adults Only", "All-Inclusive"]
+                },
+                defaultFlight: ALTERNATIVE_FLIGHTS[0],
+                defaultCar: ALTERNATIVE_CARS[0]
+            },
+            {
+                id: 2,
+                destination: "Costa Mujeres",
+                basePrice: 2100,
+                discount: "NEW OPENING",
+                rating: 4.9,
+                reviews: 542,
+                lat: 25, lon: 20,
+                hotel: {
+                    name: "TRS Coral Hotel",
+                    stars: 5,
+                    type: "Swim-up Junior Suite",
+                    image: "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&q=80&w=800",
+                    perks: ["Butlers", "Beach Club Access"]
+                },
+                defaultFlight: ALTERNATIVE_FLIGHTS[2],
+                defaultCar: ALTERNATIVE_CARS[1]
+            },
+            {
+                id: 3,
+                destination: "Tulum (North Zone)",
+                basePrice: 1250,
+                discount: "ECO-LUXE",
+                rating: 4.6,
+                reviews: 890,
+                lat: 80, lon: 85,
+                hotel: {
+                    name: "Azulik Mayan Wellness",
+                    stars: 4,
+                    type: "Jungle Villa",
+                    image: "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?auto=format&fit=crop&q=80&w=800",
+                    perks: ["Spa Rituals", "No Electricity"]
+                },
+                defaultFlight: ALTERNATIVE_FLIGHTS[1],
+                defaultCar: ALTERNATIVE_CARS[1]
+            }
+        ];
+
+        const Header = ({ viewMode, setViewMode }) => (
+            <header className="bg-white border-b sticky top-0 z-50">
+                <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="bg-emerald-600 p-2 rounded-lg text-white">
+                            <Icon name="palmtree" size={20} />
+                        </div>
+                        <span className="text-lg font-bold text-slate-900 tracking-tight tracking-tighter">CANCUN<span className="text-emerald-600">BUNDLE</span></span>
+                    </div>
+                    
+                    <div className="flex bg-slate-100 p-1 rounded-full border border-slate-200">
+                        <button onClick={() => setViewMode('list')} className={`px-4 py-1.5 rounded-full text-[10px] font-black flex items-center gap-2 transition-all ${viewMode === 'list' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>
+                            <Icon name="layout-list" size={14} /> LIST
+                        </button>
+                        <button onClick={() => setViewMode('map')} className={`px-4 py-1.5 rounded-full text-[10px] font-black flex items-center gap-2 transition-all ${viewMode === 'map' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>
+                            <Icon name="navigation" size={14} /> MAP
+                        </button>
+                    </div>
+
+                    <button className="bg-slate-900 text-white px-4 py-2 rounded-full text-xs font-bold hidden md:block">Account</button>
+                </div>
+            </header>
+        );
+
+        const SidebarFilters = ({ filters, setFilters, setViewMode }) => {
+            const [activeTab, setActiveTab] = useState('hotel');
+
+            const FilterSection = ({ title, children, onReset }) => (
+                <div className="py-6 border-b border-slate-100 last:border-0">
+                    <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-bold text-slate-900 text-[13px] tracking-tight">{title}</h4>
+                        <button onClick={onReset} className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors">Reset</button>
+                    </div>
+                    {children}
+                </div>
+            );
+
+            return (
+                <div className="flex flex-col h-full w-72 pr-6 border-r border-slate-100 max-h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar">
+                    {/* Mode Selection */}
+                    <div className="flex bg-slate-100 p-1 rounded-xl mb-6 shrink-0 mt-2">
+                        <button 
+                            onClick={() => setActiveTab('hotel')} 
+                            className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'hotel' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
+                        >
+                            <Icon name="hotel" size={14} /> HOTEL
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('flight')} 
+                            className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'flight' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
+                        >
+                            <Icon name="plane" size={14} /> FLIGHT
+                        </button>
+                    </div>
+
+                    <div className="flex-1">
+                        {activeTab === 'hotel' ? (
+                            <div className="animate-in fade-in duration-300">
+                                <div onClick={() => setViewMode('map')} className="relative h-28 w-full rounded-2xl overflow-hidden mb-6 bg-slate-200 border border-slate-200 group cursor-pointer shrink-0 shadow-sm">
+                                    <img src="https://images.unsplash.com/photo-1544085311-11a028465b0c?auto=format&fit=crop&q=80&w=400" className="w-full h-full object-cover grayscale-[0.2] opacity-70 group-hover:scale-110 transition-transform duration-700" alt="Cancun Map" />
+                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/10">
+                                        <button className="bg-slate-900 text-white px-4 py-1.5 rounded-full text-[10px] font-black flex items-center gap-2 shadow-lg group-hover:bg-emerald-600 transition-colors">
+                                            <Icon name="map" size={12} /> VIEW MAP
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="mb-6">
+                                    <h4 className="font-bold text-slate-900 text-[13px] mb-3">Sort By</h4>
+                                    <div className="relative">
+                                        <select className="w-full appearance-none bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-emerald-500 shadow-sm">
+                                            <option>Recommended</option>
+                                            <option>Cheapest</option>
+                                            <option>Star Level (Highest)</option>
+                                            <option>Guest Rating</option>
+                                        </select>
+                                        <Icon name="chevron-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    </div>
+                                </div>
+
+                                <FilterSection title="Neighborhoods" onReset={() => {}}>
+                                    <div className="space-y-3">
+                                        {['Hotel Zone', 'Tulum', 'Costa Mujeres', 'Riviera Maya'].map(n => (
+                                            <label key={n} className="flex justify-between items-center group cursor-pointer">
+                                                <div className="flex items-center gap-2">
+                                                    <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                                    <span className="text-xs font-medium text-slate-600 group-hover:text-slate-900">{n}</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-400">({Math.floor(Math.random()*200)})</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Amenities" onReset={() => {}}>
+                                    <div className="space-y-3">
+                                        {[{ l: 'Internet', i: 'wifi' }, { l: 'Breakfast', i: 'coffee' }, { l: 'Parking', i: 'parking-circle' }, { l: 'Pets Allowed', i: 'dog' }, { l: 'Swimming Pool', i: 'waves' }].map((item, i) => (
+                                            <label key={i} className="flex justify-between items-center group cursor-pointer">
+                                                <div className="flex items-center gap-2">
+                                                    <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                                    <Icon name={item.i} size={14} className="text-slate-400 group-hover:text-emerald-500" />
+                                                    <span className="text-xs font-medium text-slate-600 group-hover:text-slate-900">{item.l}</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-400">({Math.floor(Math.random()*100)})</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Hotel Star Level" onReset={() => {}}>
+                                    <div className="flex gap-1">
+                                        {[1, 2, 3, 4, 5].map(star => (
+                                            <button key={star} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-[11px] font-black text-slate-500 hover:bg-emerald-50 hover:border-emerald-500 hover:text-emerald-600 transition-all">{star}+</button>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Guest Rating" onReset={() => {}}>
+                                    <div className="flex gap-1">
+                                        {[5, 6, 7, 8, 9].map(r => (
+                                            <button key={r} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-[11px] font-black text-slate-500 hover:border-emerald-500 transition-all">{r}+</button>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Property Themes" onReset={() => {}}>
+                                    <div className="space-y-2">
+                                        {['Luxury', 'Comfort', 'Business Friendly', 'Spa & Wellness', 'Family Friendly'].map(t => (
+                                            <button key={t} className="w-full text-left p-2.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase text-slate-500 hover:border-emerald-600 hover:bg-emerald-50 transition-all">{t}</button>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+                            </div>
+                        ) : (
+                            <div className="animate-in fade-in duration-300">
+                                <FilterSection title="Inclusions" onReset={() => {}}>
+                                    <div className="space-y-3">
+                                        {[{ l: 'Carry-on bag', i: 'briefcase' }, { l: 'Seat selection', i: 'users' }, { l: 'Changes', i: 'refresh-cw' }].map((inc, i) => (
+                                            <label key={i} className="flex items-center gap-2 cursor-pointer group">
+                                                <input type="checkbox" className="w-4 h-4 rounded text-emerald-600" />
+                                                <Icon name={inc.i} size={14} className="text-slate-400 group-hover:text-emerald-500" />
+                                                <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900">{inc.l}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Stops" onReset={() => {}}>
+                                    <div className="space-y-2">
+                                        <button className="w-full flex justify-between p-3 rounded-2xl border border-emerald-600 bg-emerald-50 text-emerald-700 font-bold text-[11px]">
+                                            <span>Nonstop</span><span className="opacity-70 font-black">from $275</span>
+                                        </button>
+                                        <button className="w-full flex justify-between p-3 rounded-2xl border border-slate-200 text-slate-500 font-bold text-[11px] hover:border-emerald-300 transition-colors">
+                                            <span>Up to 1 stop</span><span className="opacity-70 font-black">$261</span>
+                                        </button>
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Airlines" onReset={() => {}}>
+                                    <div className="flex justify-between text-[9px] font-black text-blue-600 uppercase mb-4 tracking-tighter">
+                                        <button>Select None</button><span className="text-slate-200">|</span><button>Select All</button>
+                                    </div>
+                                    <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                                        {AIRLINES.map((a, i) => (
+                                            <label key={i} className="flex justify-between items-center group cursor-pointer">
+                                                <div className="flex items-center gap-2">
+                                                    <input type="checkbox" className="w-4 h-4 rounded text-emerald-600" />
+                                                    <span className="text-xs font-medium text-slate-600 group-hover:text-slate-900">{a.name}</span>
+                                                </div>
+                                                <span className="text-[10px] font-black text-emerald-600">${a.price}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Takeoff" onReset={() => {}}>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {[
+                                            { l: 'Early Morning', t: '12a-5a', i: 'moon' },
+                                            { l: 'Morning', t: '5a-12p', i: 'sunrise' },
+                                            { l: 'Afternoon', t: '12p-6p', i: 'sun' },
+                                            { l: 'Evening', t: '6p-12a', i: 'sunset' }
+                                        ].map((slot, i) => (
+                                            <button key={i} className="flex items-center justify-between p-3 rounded-2xl border border-slate-200 text-[10px] font-bold text-slate-500 hover:border-emerald-400 group transition-all">
+                                                <div className="flex items-center gap-2"><Icon name={slot.i} size={14} className="group-hover:text-emerald-500" /> {slot.l}</div>
+                                                <span className="opacity-40">{slot.t}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </FilterSection>
+
+                                <FilterSection title="Duration" onReset={() => {}}>
+                                    <div className="px-1">
+                                        <input type="range" className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-600" min="200" max="1440" />
+                                        <div className="flex justify-between mt-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                            <span>Max Duration: 12h 30m</span>
+                                        </div>
+                                    </div>
+                                </FilterSection>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const MapView = ({ packages, setViewMode }) => {
+            const [activePackage, setActivePackage] = useState(null);
+            return (
+                <div className="relative w-full h-[calc(100vh-64px)] bg-slate-200 overflow-hidden flex flex-col md:flex-row">
+                    <div className="flex-1 relative bg-[#e5e7eb] overflow-hidden">
+                        <div className="absolute inset-0 grayscale opacity-40 pointer-events-none">
+                           <img src="https://images.unsplash.com/photo-1544085311-11a028465b0c?auto=format&fit=crop&q=80&w=1600" className="w-full h-full object-cover scale-150" alt="Map View" />
+                        </div>
+                        <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:40px_40px] opacity-10"></div>
+                        {packages.map((pkg) => (
+                            <button key={pkg.id} onClick={() => setActivePackage(pkg)} style={{ left: `${pkg.lat}%`, top: `${pkg.lon}%` }} className={`absolute -translate-x-1/2 -translate-y-1/2 group transition-all duration-500 ${activePackage?.id === pkg.id ? 'z-50 scale-110' : 'z-10'}`}>
+                                <div className={`px-4 py-2 rounded-2xl font-black text-sm shadow-2xl flex items-center gap-2 border-2 ${activePackage?.id === pkg.id ? 'bg-emerald-600 text-white border-white' : 'bg-white text-slate-900 border-slate-200'}`}><Icon name="glass-water" size={14} />${pkg.basePrice.toLocaleString()}</div>
+                            </button>
+                        ))}
+                    </div>
+                    {activePackage && (
+                        <div className="w-full md:w-96 bg-white border-l p-6 space-y-6 overflow-y-auto">
+                            <div className="flex justify-between items-center"><h3 className="font-black text-sm text-slate-400 uppercase tracking-widest">{activePackage.destination}</h3><button onClick={() => setActivePackage(null)}><Icon name="x" size={20} className="text-slate-400" /></button></div>
+                            <img src={activePackage.hotel.image} className="w-full h-48 rounded-[2rem] object-cover shadow-lg" alt={activePackage.hotel.name} />
+                            <h4 className="font-black text-xl leading-tight text-slate-900">{activePackage.hotel.name}</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                                {activePackage.hotel.perks.map((p, idx) => (
+                                    <span key={idx} className="text-[10px] font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded uppercase tracking-tighter">{p}</span>
+                                ))}
+                            </div>
+                            <button onClick={() => setViewMode('list')} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all">Customize & Book</button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const PackageCard = ({ pkg }) => {
+            const [selectedFlight, setSelectedFlight] = useState(pkg.defaultFlight);
+            const [selectedCar, setSelectedCar] = useState(pkg.defaultCar);
+            const [isChangingFlight, setIsChangingFlight] = useState(false);
+            const [isChangingCar, setIsChangingCar] = useState(false);
+            const [aiContent, setAiContent] = useState(null);
+            const [isAiLoading, setIsAiLoading] = useState(false);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isCopied, setIsCopied] = useState(false);
+
+            const total = pkg.basePrice + selectedFlight.priceDelta + selectedCar.priceDelta;
+
+            const handleShare = () => {
+                const mockUrl = `https://cancunbundle.com/share/${pkg.id}?fly=${selectedFlight.id}&car=${selectedCar.id}`;
+                const textArea = document.createElement("textarea");
+                textArea.value = mockUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+            };
+
+            const getItinerary = async () => {
+                setIsModalOpen(true);
+                if (aiContent) return;
+                setIsAiLoading(true);
+                try {
+                    const res = await callGemini(`3-day Cancun itinerary staying at ${pkg.hotel.name} with ${selectedCar.model}.`);
+                    setAiContent(res);
+                } catch { setAiContent("Error generating itinerary."); } finally { setIsAiLoading(false); }
+            };
+
+            return (
+                <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm hover:shadow-xl transition-all mb-8 overflow-hidden flex flex-col group slide-in-from-bottom-4">
+                    <div className="px-6 py-4 bg-slate-50 border-b flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase tracking-tighter">{pkg.discount}</span>
+                            <h3 className="font-bold text-slate-900 text-sm md:text-base">{pkg.destination}</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleShare} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black transition-all border ${isCopied ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-600 hover:text-emerald-600'}`}>
+                                {isCopied ? <><Icon name="check" size={12} /> COPIED</> : <><Icon name="share-2" size={12} /> SHARE</>}
+                            </button>
+                            <button onClick={getItinerary} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-emerald-100 rounded-full text-[11px] font-black text-emerald-600 shadow-sm hover:bg-emerald-600 hover:text-white transition-all">
+                                <Icon name="sparkles" size={14} /> ✨ AI CONCIERGE
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col lg:flex-row">
+                        {/* HOTEL */}
+                        <div className={`flex-1 p-6 border-b lg:border-b-0 lg:border-r border-slate-100 transition-all duration-300 ${isChangingFlight || isChangingCar ? 'opacity-30 blur-[1px]' : ''}`}>
+                            <div className="flex items-center gap-2 mb-4 text-emerald-600">
+                                <Icon name="hotel" size={16} />
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">The Resort</span>
+                            </div>
+                            <div className="relative h-44 rounded-3xl overflow-hidden mb-4 shadow-inner">
+                                <img src={pkg.hotel.image} className="w-full h-full object-cover group-hover:scale-105 transition-all duration-1000" alt={pkg.hotel.name} />
+                                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[9px] font-black text-emerald-600 shadow-sm">PLATINUM</div>
+                            </div>
+                            <h4 className="font-black text-slate-900 text-lg mb-1 leading-tight">{pkg.hotel.name}</h4>
+                            <div className="flex items-center gap-1 mb-4">
+                                {[...Array(pkg.hotel.stars)].map((_, i) => <Icon key={i} name="star" size={14} className="text-amber-400 fill-amber-400" />)}
+                                <span className="text-[10px] font-black text-slate-400 ml-2 uppercase tracking-tighter">Verified Rating</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {pkg.hotel.perks.map((p, i) => <span key={i} className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl shadow-sm">{p}</span>)}
+                            </div>
+                        </div>
+
+                        {/* FLIGHT */}
+                        <div className={`flex-1 p-6 border-b lg:border-b-0 lg:border-r border-slate-100 relative transition-all duration-500 ${isChangingFlight ? 'bg-emerald-50/50 z-10' : (isChangingCar ? 'opacity-30 blur-[1px]' : 'bg-slate-50/20')}`}>
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="flex items-center gap-2 text-emerald-600">
+                                    <Icon name="plane" size={16} />
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Included Flight</span>
+                                </div>
+                                <button onClick={() => setIsChangingFlight(!isChangingFlight)} className="text-[10px] font-black text-emerald-600 uppercase hover:underline">
+                                    {isChangingFlight ? <Icon name="x" size={16} /> : <><Icon name="refresh-cw" size={14} /> CHANGE</>}
+                                </button>
+                            </div>
+                            {!isChangingFlight ? (
+                                <div className="space-y-6">
+                                    <p className="font-black text-slate-900">{selectedFlight.airline}</p>
+                                    <div className="flex items-center justify-between gap-6 px-2">
+                                        <div className="text-center font-black"><p className="text-sm">07:00</p><p className="text-[9px] text-slate-400 uppercase">DFW</p></div>
+                                        <div className="flex-1 border-t-2 border-dashed border-emerald-200 relative"><Icon name="plane" size={16} className="text-emerald-300 absolute left-1/2 -top-2 -translate-x-1/2 bg-white px-1" /></div>
+                                        <div className="text-center font-black"><p className="text-sm">12:45</p><p className="text-[9px] text-slate-400 uppercase">CUN</p></div>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-2xl border border-slate-100 flex justify-between text-[10px] font-black text-emerald-600 uppercase tracking-tighter">
+                                        <span>{selectedFlight.stops}</span><span>{selectedFlight.durationStr}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-[240px] overflow-y-auto custom-scrollbar">
+                                    {ALTERNATIVE_FLIGHTS.map(f => (
+                                        <button key={f.id} onClick={() => { setSelectedFlight(f); setIsChangingFlight(false); }} className={`w-full p-4 rounded-2xl border text-left transition-all ${selectedFlight.id === f.id ? 'bg-white border-emerald-600 ring-1 ring-emerald-600 shadow-md' : 'bg-white border-slate-200 hover:border-emerald-300'}`}>
+                                            <div className="flex justify-between items-center mb-1"><span className="text-xs font-black text-slate-900">{f.airline}</span><span className={`text-[10px] font-black ${f.priceDelta >= 0 ? 'text-emerald-600' : 'text-emerald-600'}`}>{f.priceDelta === 0 ? 'INCLUDED' : `$${f.priceDelta}`}</span></div>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase">{f.times} • {f.durationStr}</p>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* CAR */}
+                        <div className={`flex-1 p-6 flex flex-col transition-all duration-500 relative ${isChangingCar ? 'bg-emerald-50/50 z-10' : (isChangingFlight ? 'opacity-30 blur-[1px]' : '')}`}>
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="flex items-center gap-2 text-emerald-600"><Icon name="car" size={16} /><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ground Transport</span></div>
+                                <button onClick={() => setIsChangingCar(!isChangingCar)} className="text-[10px] font-black text-emerald-600 uppercase hover:underline">{isChangingCar ? <Icon name="x" size={16} /> : 'CHANGE'}</button>
+                            </div>
+                            {!isChangingCar ? (
+                                <div className="flex-1 space-y-6">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-14 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 shadow-inner"><Icon name="car" size={28} /></div>
+                                        <div><h5 className="font-black text-slate-900 text-sm leading-tight">{selectedCar.model}</h5><p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">{selectedCar.category}</p></div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-slate-50 p-3 rounded-2xl text-[10px] font-black text-slate-700 flex items-center gap-2 border border-slate-100"><Icon name="gauge" size={14} className="opacity-40" /> {selectedCar.transmission}</div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl text-[10px] font-black text-slate-700 flex items-center gap-2 border border-slate-100"><Icon name="users" size={14} className="opacity-40" /> 5-8 SEATS</div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex-1 space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar">
+                                    {ALTERNATIVE_CARS.map(c => <button key={c.id} onClick={() => { setSelectedCar(c); setIsChangingCar(false); }} className={`w-full p-4 rounded-2xl border text-left bg-white transition-all ${selectedCar.id === c.id ? 'border-emerald-600 ring-1 ring-emerald-600 shadow-md' : 'border-slate-200'}`}><span className="text-[11px] font-black text-slate-900 uppercase">{c.model}</span></button>)}
+                                </div>
+                            )}
+                            <div className="mt-8 pt-6 border-t border-slate-100 flex items-end justify-between">
+                                <div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Bundle Deal</p><p className="text-3xl font-black text-slate-900">${total.toLocaleString()}</p></div>
+                                <button disabled={isChangingFlight || isChangingCar} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all shadow-emerald-500/20 active:scale-95">BOOK NOW</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-emerald-950/40 backdrop-blur-md animate-in duration-300">
+                            <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                                    <div className="flex items-center gap-3"><Icon name="sparkles" size={20} className="text-emerald-600" /><span className="font-black text-slate-900 uppercase tracking-widest text-sm">Cancun Concierge</span></div>
+                                    <button onClick={() => setIsModalOpen(false)}><Icon name="x" size={20} className="text-slate-400" /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-8 text-slate-700 text-sm leading-relaxed custom-scrollbar">
+                                    {isAiLoading ? <div className="flex flex-col items-center justify-center h-64 text-center"><Icon name="loader-2" size={40} className="text-emerald-600 animate-spin mb-4" /><p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Planning your Mexican getaway...</p></div> : <div className="whitespace-pre-wrap font-medium">{aiContent}</div>}
+                                </div>
+                                <div className="p-6 border-t bg-slate-50 flex justify-center"><button onClick={() => setIsModalOpen(false)} className="bg-slate-900 text-white px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest">Got it</button></div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        function App() {
+            const [viewMode, setViewMode] = useState('list');
+            const [filters, setFilters] = useState({});
+
+            return (
+                <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
+                    <Header viewMode={viewMode} setViewMode={setViewMode} />
+                    
+                    {viewMode === 'list' ? (
+                        <>
+                            <div className="bg-emerald-950 py-12 md:py-16 px-4 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-600/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2"></div>
+                                <div className="max-w-7xl mx-auto text-center relative z-10">
+                                    <h1 className="text-4xl md:text-6xl font-black text-white mb-4 tracking-tighter animate-in fade-in duration-1000">CANCUN <span className="text-emerald-400">UNBUNDLED</span></h1>
+                                    <p className="text-emerald-200 font-bold mb-10 text-lg uppercase tracking-[0.3em] opacity-80">Hotel Zone • Costa Mujeres • Riviera Maya</p>
+                                    <div className="bg-white p-2 rounded-3xl shadow-2xl flex flex-col md:flex-row gap-1 max-w-4xl mx-auto border-4 border-emerald-900/10">
+                                        <div className="flex items-center gap-3 px-6 py-4 md:border-r border-slate-100 flex-1">
+                                            <Icon name="map-pin" size={20} className="text-emerald-500" />
+                                            <div className="text-left flex flex-col">
+                                                <span className="text-[10px] font-black text-slate-400 uppercase">Destination</span>
+                                                <span className="text-sm font-black text-slate-900">Cancun, Mexico</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 px-6 py-4 flex-1">
+                                            <Icon name="calendar" size={20} className="text-emerald-500" />
+                                            <div className="text-left flex flex-col">
+                                                <span className="text-[10px] font-black text-slate-400 uppercase">Travel Dates</span>
+                                                <span className="text-sm font-bold text-slate-600">Nov 14 - 21, 2024</span>
+                                            </div>
+                                        </div>
+                                        <button className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20">Search Bundles</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <main className="max-w-7xl mx-auto px-4 py-12 flex flex-col md:flex-row items-start relative">
+                                <aside className="hidden md:block sticky top-24 self-start max-h-[85vh]">
+                                    <SidebarFilters filters={filters} setFilters={setFilters} setViewMode={setViewMode} />
+                                </aside>
+                                <section className="flex-1 w-full md:pl-8">
+                                    <div className="flex items-center justify-between mb-10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-emerald-100 p-2.5 rounded-2xl text-emerald-600"><Icon name="glass-water" size={24} /></div>
+                                            <div>
+                                                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Curated Escapes</h2>
+                                                <p className="text-xs font-bold text-slate-400 uppercase">Available bundles in your region</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {PACKAGES.map(p => <PackageCard key={p.id} pkg={p} />)}
+                                    </div>
+                                </section>
+                            </main>
+                        </>
+                    ) : (
+                        <MapView packages={PACKAGES} setViewMode={setViewMode} />
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
