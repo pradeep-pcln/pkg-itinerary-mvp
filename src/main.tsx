@@ -1,3 +1,4 @@
+import { materialSymbolsUrl } from '@pcln/horizon'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -8,6 +9,7 @@ const isDebug = window.location.pathname.endsWith('/debug') || window.location.p
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <link rel="stylesheet" href={materialSymbolsUrl} precedence="default" />
     {isDebug ? <DebugPage /> : <App />}
   </StrictMode>,
 )

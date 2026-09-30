@@ -22,6 +22,14 @@ export interface FlightLeg {
   arriveTime: string
 }
 
+export interface HotelImage {
+  // ~500px wide, for cards
+  url: string
+  // ~1280px wide, for the drawer
+  hdUrl: string
+  caption: string
+}
+
 export interface NormalizedPackage {
   proposalIndex: number
   // Keys needed for checkout
@@ -35,6 +43,7 @@ export interface NormalizedPackage {
   guestRating: number
   thumbnailUrl: string
   heroImageUrl: string
+  hotelImages: HotelImage[]
   nightlyRate: number
   nightlyStrikethrough: number
   dealName: string
@@ -58,6 +67,8 @@ export interface NormalizedPackage {
   returnDate: string
   travelers: number
   nights: number
+  // Cheapest rental car at the destination; null when rc-availability failed or returned nothing
+  car: NormalizedRentalCar | null
 }
 
 export interface NormalizedRentalCar {
@@ -75,6 +86,7 @@ export interface NormalizedRentalCar {
   isPrepaid: boolean
   isPayLater: boolean
   freeCancellation: boolean
+  packageSupported: boolean
   pickupLocation: string
   returnLocation: string
   pickupDateTime: string

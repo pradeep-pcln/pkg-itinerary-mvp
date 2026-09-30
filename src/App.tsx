@@ -1,14 +1,13 @@
-import { Heading, P, Spinner } from '@pcln/horizon'
+import { Button, Heading, P, Span, Spinner } from '@pcln/horizon'
 import { useState } from 'react'
 import { GlobalHeader, GlobalFooter } from './components/GlobalHeader'
 import { FilterSidebar, DEFAULT_FILTERS, applyFilters } from './components/FilterSidebar'
 import type { Filters } from './components/FilterSidebar'
 import { PackageCard, PackageCardSkeleton } from './components/PackageCard'
-import { HotelModal } from './components/HotelModal'
-import { FlightModal } from './components/FlightModal'
-import { FlightSelectModal } from './components/FlightSelectModal'
+import { ItineraryDrawer } from './components/ItineraryDrawer'
 import { usePackages, clearPackageCache } from './hooks/usePackages'
-import type { NormalizedFlight, NormalizedPackage } from './types'
+import { cityName } from './lib/itinerary'
+import type { NormalizedPackage } from './types'
 
 const AIRPORTS: Record<string, string> = {
   EWR: 'Newark', JFK: 'New York', LAX: 'Los Angeles',
@@ -16,6 +15,14 @@ const AIRPORTS: Record<string, string> = {
 }
 function airportLabel(code: string) {
   return AIRPORTS[code] ? `${AIRPORTS[code]} (${code})` : code
+}
+
+function shortDate(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function nightsBetween(depart: string, ret: string) {
+  return Math.round((new Date(`${ret}T12:00:00`).getTime() - new Date(`${depart}T12:00:00`).getTime()) / 86400000)
 }
 
 const GLOBAL_STYLES = `
@@ -55,116 +62,34 @@ const GLOBAL_STYLES = `
     .pkg-cards-col { flex: 1; min-width: 0; }
   }
   .pkg-cards-col { flex: 1; }
-
-  /* Card layout */
-  .pkg-card-body { display: flex; flex-direction: column; }
-  @media (min-width: 768px) { .pkg-card-body { flex-direction: row; } }
-
-  .pkg-hotel-section { padding: 16px 20px; border-bottom: 1px solid #d2e6ff; }
-  @media (min-width: 768px) {
-    .pkg-hotel-section { flex: 1; border-bottom: none; border-right: 1px solid #d2e6ff; padding: 20px 24px; }
-  }
-
-  .pkg-flight-section { padding: 16px 20px; background: #f5f8ff; }
-  @media (min-width: 768px) { .pkg-flight-section { flex: 1; padding: 20px 24px; } }
-
-  .pkg-card-header {
-    display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 8px; padding: 10px 20px;
-    background: #e8f2ff; border-bottom: 1px solid #d2e6ff;
-    border-radius: 12px 12px 0 0;
-  }
-  @media (min-width: 768px) { .pkg-card-header { padding: 10px 24px; } }
-
-  .pkg-pricing-footer {
-    display: flex; flex-direction: column; gap: 14px;
-    padding: 14px 20px; background: #e8f2ff; border-top: 1px solid #d2e6ff;
-    border-radius: 0 0 12px 12px;
-  }
-  @media (min-width: 768px) {
-    .pkg-pricing-footer { flex-direction: row; align-items: center; justify-content: space-between; padding: 14px 24px; }
-  }
-
-  /* Detail link buttons on card sections */
-  .pkg-detail-link {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 12px; font-weight: 700; color: #0068ef;
-    background: none; border: none; cursor: pointer; padding: 4px 0;
-    font-family: 'Montserrat', Arial, sans-serif;
-    text-decoration: none;
-  }
-  .pkg-detail-link:hover { text-decoration: underline; }
-
-  /* Mobile filter toggle */
-  .filter-mobile-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: #fff;
-    border: 1px solid #d2e6ff;
-    border-radius: 8px;
-    color: #001833;
-    font-family: 'Montserrat', Arial, sans-serif;
-    font-size: 13px; font-weight: 700;
-    padding: 8px 14px; cursor: pointer;
-  }
-  @media (min-width: 900px) { .filter-mobile-btn { display: none; } }
 `
 
 export default function App() {
-  const { packages, flyItems, loading, error, fromCache, searchParams } = usePackages()
+  const { packages, loading, error, fromCache, searchParams } = usePackages()
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [filterOpen, setFilterOpen] = useState(false)
-  const [hotelPkg, setHotelPkg] = useState<NormalizedPackage | null>(null)
-  const [flightPkg, setFlightPkg] = useState<NormalizedPackage | null>(null)
-  const [changeFlightPkg, setChangeFlightPkg] = useState<NormalizedPackage | null>(null)
-  const [allFlightsForModal, setAllFlightsForModal] = useState<NormalizedFlight[]>([])
-  const [flightsLoading, setFlightsLoading] = useState(false)
-  // keyed by hotelItemKey — stores the user-selected override flight per package
-  const [flightOverrides, setFlightOverrides] = useState<Record<string, NormalizedFlight>>({})
+  // Kept separate from `itineraryOpen` so drawer content stays rendered during its close animation
+  const [itineraryPkg, setItineraryPkg] = useState<NormalizedPackage | null>(null)
+  const [itineraryOpen, setItineraryOpen] = useState(false)
 
   function handleRefresh() {
     clearPackageCache()
     window.location.reload()
   }
 
-  async function handleChangeFlight(pkg: NormalizedPackage) {
-    setChangeFlightPkg(pkg)
-    setAllFlightsForModal([])
-    setFlightsLoading(true)
-    try {
-      const resp = await fetch('/cdns-pkg-ui/api/flights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          originAirport: searchParams.originAirport,
-          originMetroCode: 'NYC',
-          destinationAirport: searchParams.destinationAirport,
-          destinationCityId: '3000061781',
-          departDate: searchParams.departDate,
-          returnDate: searchParams.returnDate,
-          travelers: searchParams.travelers,
-        }),
-      })
-      const data = await resp.json()
-      setAllFlightsForModal(data.flyItems ?? [])
-    } catch {
-      setAllFlightsForModal(flyItems)
-    } finally {
-      setFlightsLoading(false)
-    }
+  function handleViewItinerary(pkg: NormalizedPackage) {
+    setItineraryPkg(pkg)
+    setItineraryOpen(true)
   }
 
   const filtered = applyFilters(packages, filters)
+  const nights = nightsBetween(searchParams.departDate, searchParams.returnDate)
 
   const activeFilterCount = [
     filters.sortBy !== 'recommended',
     filters.amenities.length > 0,
     filters.minStars > 0,
     filters.minRating > 0,
-    filters.outboundStops >= 0,
-    filters.selectedAirlines.length > 0,
-    filters.takeoffSlots.length > 0,
   ].filter(Boolean).length
 
   return (
@@ -215,22 +140,29 @@ export default function App() {
         <div className="pkg-cards-col">
 
           {/* Results header row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' as const }}>
-            <Heading as="h2" textStyle="heading4" style={{ margin: 0, color: '#001833', flex: 1 }}>
-              Cancun Vacation Packages
-            </Heading>
+          <div className="mb-4 flex flex-wrap items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <Heading as="h2" textStyle="heading4" palette="primary" shade="13">
+                Itineraries from {cityName(searchParams.originAirport)} to {cityName(searchParams.destinationAirport)}
+              </Heading>
+              <Span textStyle="body3" palette="primary" shade="10">
+                {shortDate(searchParams.departDate)} – {shortDate(searchParams.returnDate)} · {nights} nights · {searchParams.travelers} traveler{searchParams.travelers > 1 ? 's' : ''}
+              </Span>
+            </div>
 
             {!loading && !error && (
-              <span style={{ background: '#0068ef', color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: "'Montserrat', Arial, sans-serif", padding: '3px 10px', borderRadius: 999 }}>
-                {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-              </span>
+              <Span textStyle="body2" bold palette="primary" shade="10">
+                {filtered.length} itinerar{filtered.length !== 1 ? 'ies' : 'y'}
+              </Span>
             )}
 
             {/* Mobile filter toggle */}
             {!loading && packages.length > 0 && (
-              <button className="filter-mobile-btn" onClick={() => setFilterOpen(true)}>
-                ⚙ Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-              </button>
+              <div className="min-[900px]:hidden">
+                <Button type="secondary" size="sm" iconLeft="tune" onClick={() => setFilterOpen(true)}>
+                  Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                </Button>
+              </div>
             )}
 
             {loading && <Spinner size="md" />}
@@ -276,30 +208,13 @@ export default function App() {
             <PackageCard
               key={`${pkg.proposalIndex}-${pkg.hotelItemKey}`}
               pkg={pkg}
-              flightOverride={flightOverrides[pkg.hotelItemKey]}
-              onHotelDetails={setHotelPkg}
-              onFlightDetails={setFlightPkg}
-              onChangeFlight={handleChangeFlight}
+              onViewItinerary={handleViewItinerary}
             />
           ))}
         </div>
       </div>
 
-      {/* Modals */}
-      {hotelPkg && <HotelModal pkg={hotelPkg} onClose={() => setHotelPkg(null)} />}
-      {flightPkg && <FlightModal pkg={flightPkg} allFlights={flyItems} onClose={() => setFlightPkg(null)} />}
-      {changeFlightPkg && (
-        <FlightSelectModal
-          pkg={changeFlightPkg}
-          allFlights={allFlightsForModal}
-          loading={flightsLoading}
-          selectedFlyItemKey={flightOverrides[changeFlightPkg.hotelItemKey]?.itemKey ?? changeFlightPkg.flyItemKey}
-          onSelect={(flight) => {
-            setFlightOverrides((prev) => ({ ...prev, [changeFlightPkg.hotelItemKey]: flight }))
-          }}
-          onClose={() => setChangeFlightPkg(null)}
-        />
-      )}
+      <ItineraryDrawer pkg={itineraryPkg} open={itineraryOpen} onOpenChange={setItineraryOpen} />
 
       <GlobalFooter />
     </div>

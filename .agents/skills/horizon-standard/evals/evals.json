@@ -1,0 +1,86 @@
+{
+  "skill_name": "horizon-standard",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a new Card component for @pcln/horizon with size and emphasis variants",
+      "expected_output": "Component following horizon-standard anatomy with .tsx, .variants.ts, .stories.tsx, .spec.tsx, .testFixtures.tsx, and index.ts",
+      "files": [],
+      "expectations": [
+        "Uses forwardRef with named function",
+        "Props extend ComponentVariants and ComponentPropsWithoutRef",
+        "All styling in .variants.ts using tv() from src/variants/tv",
+        "Exports VariantProps<typeof cardVariants> and typeof cardVariants.slots",
+        "Uses import type for type-only imports",
+        "JSDoc with @import tag as documentation source",
+        "Uses cn() for class merging and cleanProps() for DOM spread",
+        "Single export per main component file",
+        "Stories include desktop and mobile versions",
+        "testFixtures file created and shared between stories and specs"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need to add a z-index to fix an overlay stacking issue in my Horizon component",
+      "expected_output": "Agent recommends alternatives before z-index and asks for developer permission if z-index is needed",
+      "files": [],
+      "expectations": [
+        "Suggests isolate as preferred stacking context approach",
+        "Mentions pseudo-elements or composition as alternatives",
+        "States z-index requires justification and developer approval",
+        "Does NOT immediately add a z-index without discussion"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Write a Storybook story for an existing Horizon Badge component that uses container queries",
+      "expected_output": "JSX-based story with desktop and mobile variants using container query patterns",
+      "files": [],
+      "expectations": [
+        "Uses JSX-based stories, NOT snapshotStoryDecorator",
+        "Includes both desktop and mobile stories",
+        "Mobile story uses container with w-[390px] arbitrary value",
+        "Uses react-docgen-typescript for args where possible",
+        "Hides children/node type props from Controls",
+        "Includes interaction tests with play functions",
+        "Imports test data from .testFixtures.tsx"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Audit the Button component against horizon-standard",
+      "expected_output": "Component audited against all 11 standards with visual verification",
+      "files": [],
+      "expectations": [
+        "Checks all standards: anatomy, composition, styling, TS, a11y, storybook, tests, sonar, layout, package",
+        "Uses Storybook MCP to capture visuals before changes",
+        "Updates horizon-standard-audit.md with dated results",
+        "Writes audit report to .pcln-ai-output/horizon-standard/",
+        "Uses pass/warn/fail indicators per standard"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I'm building a component that needs to respond to different screen sizes. Should I use media queries or container queries?",
+      "expected_output": "Agent recommends container queries as the default, explains when media queries are appropriate",
+      "files": [],
+      "expectations": [
+        "Recommends container queries as the default choice",
+        "Mentions @container + @2xl breakpoints",
+        "Notes media queries are only for truly viewport-dependent cases like Hero",
+        "Does NOT default to media queries"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "I'm working on a horizon-messaging component for email templates",
+      "expected_output": "Agent recognizes this is excluded from horizon-standard",
+      "files": [],
+      "expectations": [
+        "Identifies that horizon-messaging uses react-email with different conventions",
+        "Does NOT apply horizon-standard rules",
+        "Suggests the horizon-messaging skill instead"
+      ]
+    }
+  ]
+}

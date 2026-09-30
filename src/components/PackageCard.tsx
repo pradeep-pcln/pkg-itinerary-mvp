@@ -1,296 +1,200 @@
 import {
   Badge,
+  Button,
   Card,
+  Carousel,
+  CdnIcon,
   Heading,
+  PlainA,
   Price,
+  ReviewBadge,
   Skeleton,
   Span,
 } from '@pcln/horizon'
-import type { FlightLeg, NormalizedFlight, NormalizedPackage } from '../types'
+import { useState } from 'react'
+import {
+  bookUrl,
+  dealLabel,
+  perPersonPrice,
+  placeholderActivityCount,
+  placeholderDays,
+  placeholderHighlights,
+  tripDaysLabel,
+  tripMeta,
+  tripTitle,
+} from '../lib/itinerary'
+import type { NormalizedPackage } from '../types'
 
-function epochToTime(seconds: string): string {
-  if (!seconds) return ''
-  return new Date(Number(seconds) * 1000).toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'UTC',
-  })
+const CARD_DAY_COUNT = 3
+
+// Deterministic stand-in until a review-count source exists
+function placeholderReviewCount(pkg: NormalizedPackage): number {
+  return 120 + ((pkg.proposalIndex * 37) % 400)
 }
 
-function Stars({ count }: { count: number }) {
-  return (
-    <div style={{ display: 'flex', gap: 2 }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <span key={i} style={{ color: i < count ? '#0068ef' : '#d2e6ff', fontSize: 13 }}>★</span>
-      ))}
-    </div>
-  )
-}
+export function TripImage({ pkg, className }: { pkg: NormalizedPackage; className?: string }) {
+  const [src, setSrc] = useState(pkg.heroImageUrl || pkg.thumbnailUrl)
 
-function RouteRow({ legs, date }: { legs: FlightLeg[]; date: string }) {
-  if (!legs.length) return null
-  const first = legs[0]
-  const last = legs[legs.length - 1]
-  const stops = legs.length - 1
-  const depTime = epochToTime(first.departTime)
-  const arrTime = epochToTime(last.arriveTime)
-  const dateLabel = date
-    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    : ''
+  function handleError() {
+    setSrc((current) => (current !== pkg.thumbnailUrl && pkg.thumbnailUrl ? pkg.thumbnailUrl : ''))
+  }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #d2e6ff', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
-      <Span textStyle="body3" style={{ color: '#0068ef', fontWeight: 800, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        {dateLabel}
-      </Span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ textAlign: 'center' }}>
-          <Span textStyle="body1" bold style={{ color: '#001833' }}>{first.origin}</Span>
-          <Span textStyle="body3" style={{ color: '#496785', display: 'block' }}>{depTime}</Span>
-        </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-          <div style={{ flex: 1, borderTop: '2px dashed #b3d4ff' }} />
-          <span style={{ fontSize: 14, margin: '0 6px', color: '#0068ef' }}>✈</span>
-          <div style={{ flex: 1, borderTop: '2px dashed #b3d4ff' }} />
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <Span textStyle="body1" bold style={{ color: '#001833' }}>{last.destination}</Span>
-          <Span textStyle="body3" style={{ color: '#496785', display: 'block' }}>{arrTime}</Span>
-        </div>
-      </div>
-      <div style={{ textAlign: 'center', marginTop: 6 }}>
-        <Span textStyle="body3" style={{ background: '#e8f2ff', color: '#003c8a', padding: '2px 10px', borderRadius: 20, fontWeight: 700 }}>
-          {stops === 0 ? 'Direct' : `${stops} stop${stops > 1 ? 's' : ''}`}
-          {legs.slice(1).map(l => ` · ${l.origin}`).join('')}
-        </Span>
-      </div>
-    </div>
-  )
-}
-
-function HotelSection({ pkg }: { pkg: NormalizedPackage }) {
-  const perks: string[] = []
-  if (pkg.allInclusive) perks.push('All-Inclusive')
-  if (pkg.freeCancellation) perks.push('Free Cancel')
-
-  return (
-    <div className="pkg-hotel-section">
-      <Span textStyle="body3" style={{ color: '#0068ef', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 12 }}>
-        🏨 Hotel
-      </Span>
-
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
-        {(pkg.heroImageUrl || pkg.thumbnailUrl) ? (
-          <img
-            src={pkg.heroImageUrl || pkg.thumbnailUrl}
-            alt={pkg.hotelName}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => {
-              const img = e.target as HTMLImageElement
-              if (pkg.heroImageUrl && img.src !== pkg.thumbnailUrl && pkg.thumbnailUrl) {
-                img.src = pkg.thumbnailUrl
-              } else {
-                img.style.display = 'none'
-              }
-            }}
-          />
-        ) : (
-          <div style={{ width: '100%', height: '100%', background: '#e8f2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Span textStyle="body3" style={{ color: '#8399b0' }}>No image</Span>
-          </div>
-        )}
-        {pkg.savingsPct > 0 && (
-          <div style={{ position: 'absolute', top: 8, left: 8 }}>
-            <span style={{
-              background: '#0068ef',
-              color: '#fff',
-              fontSize: 11,
-              fontWeight: 800,
-              padding: '4px 10px',
-              borderRadius: 6,
-            }}>Save {pkg.savingsPct}%</span>
-          </div>
-        )}
-      </div>
-
-      <Heading as="h3" textStyle="heading5" style={{ marginBottom: 6, color: '#001833' }}>
-        {pkg.hotelName}
-      </Heading>
-
-      {pkg.starRating > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <Stars count={pkg.starRating} />
-        </div>
-      )}
-
-      {pkg.guestRating > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <div style={{ background: '#0068ef', color: '#fff', fontWeight: 800, fontSize: 13, padding: '3px 8px', borderRadius: 6 }}>
-            {pkg.guestRating.toFixed(1)}
-          </div>
-          <Span textStyle="body3" style={{ color: '#334155' }}>
-            {pkg.guestRating >= 9 ? 'Exceptional' : pkg.guestRating >= 8 ? 'Excellent' : 'Very Good'}
-          </Span>
-        </div>
-      )}
-
-      {perks.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-          {perks.map((p) => (
-            <Badge key={p} palette="benefit" emphasis="medium" size="sm">{p}</Badge>
-          ))}
-        </div>
-      )}
-
-      {pkg.nightlyRate > 0 && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          {pkg.nightlyStrikethrough > 0 && (
-            <Price
-              type="priceRetail"
-              textStyle="body2"
-              currencySymbol="$"
-              price={String(Math.round(pkg.nightlyStrikethrough))}
-            />
-          )}
-          <Price
-            type="priceSale"
-            textStyle="body1"
-            bold
-            currencySymbol="$"
-            price={String(Math.round(pkg.nightlyRate))}
-          />
-          <Span textStyle="body3" style={{ color: '#496785' }}>/night</Span>
+    <div className={`relative overflow-hidden bg-primary-3 ${className ?? ''}`}>
+      {src ? (
+        <img src={src} alt={pkg.hotelName} className="absolute inset-0 size-full object-cover" onError={handleError} />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Span textStyle="body3" palette="neutral" shade="7">No image</Span>
         </div>
       )}
     </div>
   )
 }
 
-function FlightSection({ pkg, flightOverride, onChangeFlight }: {
+const CAROUSEL_SLOT_CLASSES = {
+  viewportClass: 'h-full m-0 p-0 rounded-none',
+  containerClass: 'h-full',
+  slideClass: 'h-full',
+}
+
+interface HotelCarouselProps {
   pkg: NormalizedPackage
-  flightOverride?: NormalizedFlight
-  onChangeFlight?: () => void
-}) {
-  const airline = flightOverride?.airline ?? pkg.airline
-  const airlineLogoUrl = flightOverride?.airlineLogoUrl ?? pkg.airlineLogoUrl
-  const outboundLegs = flightOverride?.outboundLegs ?? pkg.outboundLegs
-  const returnLegs = flightOverride?.returnLegs ?? pkg.returnLegs
-  const isOverride = !!flightOverride && flightOverride.itemKey !== pkg.flyItemKey
+  // Cards use the ~500px images; the drawer uses the ~1280px ones
+  variant: 'card' | 'drawer'
+  className?: string
+}
+
+export function HotelCarousel({ pkg, variant, className }: HotelCarouselProps) {
+  const images = pkg.hotelImages ?? []
+  if (images.length < 2) return <TripImage pkg={pkg} className={className} />
+
+  const slides = images.map((img, i) => ({
+    id: i,
+    image: variant === 'drawer' ? img.hdUrl : img.url,
+    title: img.caption || `${pkg.hotelName} photo ${i + 1}`,
+  }))
 
   return (
-    <div className="pkg-flight-section">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Span textStyle="body3" style={{ color: '#0068ef', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          ✈️ {isOverride ? 'Alternative Flight' : 'Included Flight'}
-        </Span>
-        {onChangeFlight && (
-          <button className="pkg-detail-link" onClick={onChangeFlight} style={{ fontSize: 11 }}>
-            🔄 Change ›
-          </button>
-        )}
-      </div>
-
-      {isOverride && (
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, padding: '3px 8px', display: 'inline-block', marginBottom: 8 }}>
-          ⚠ Custom selection — pricing may vary
-        </div>
-      )}
-
-      {airline && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          {airlineLogoUrl && (
-            <img
-              src={airlineLogoUrl}
-              alt={airline}
-              style={{ height: 24, width: 'auto', objectFit: 'contain' }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          )}
-          <Span textStyle="body3" style={{ color: '#496785', fontWeight: 600 }}>
-            {airline}
-          </Span>
-        </div>
-      )}
-
-      <RouteRow legs={outboundLegs} date={pkg.departDate} />
-      <RouteRow legs={returnLegs} date={pkg.returnDate} />
-
-      <div style={{ textAlign: 'center', marginTop: 10 }}>
-        <span style={{
-          background: '#e8f2ff',
-          color: '#003c8a',
-          fontSize: 12,
-          fontWeight: 700,
-          padding: '4px 12px',
-          borderRadius: 999,
-          border: '1px solid #b3d4ff',
-        }}>
-          {pkg.nights} nights included
-        </span>
+    <div className={`relative overflow-hidden bg-primary-3 ${className ?? ''}`}>
+      <div className="absolute inset-0">
+        <Carousel
+          type="image"
+          slides={slides}
+          slideWidth="image"
+          pagination="numbers"
+          loop
+          lazyLoad
+          ariaLabel={`${pkg.hotelName} photos`}
+          slotClassNames={CAROUSEL_SLOT_CLASSES}
+        />
       </div>
     </div>
   )
 }
 
-function PricingFooter({ pkg, onHotelDetails, onFlightDetails }: {
-  pkg: NormalizedPackage
-  onHotelDetails?: (p: NormalizedPackage) => void
-  onFlightDetails?: (p: NormalizedPackage) => void
-}) {
-  const params = new URLSearchParams({
-    origin: pkg.origin,
-    destination: pkg.destination,
-    'departure-date': pkg.departDate.replace(/-/g, ''),
-    'return-date': pkg.returnDate.replace(/-/g, ''),
-    'num-adults': String(pkg.travelers),
-    'package-type-code': 'AH',
-  })
-  const bookUrl = `https://qaa.priceline.com/shop/search/?${params}`
-  const perPerson = pkg.bundleTotal > 0 ? Math.round(pkg.bundleTotal / pkg.travelers) : 0
+function ImageColumn({ pkg }: { pkg: NormalizedPackage }) {
+  return (
+    <div className="relative">
+      <HotelCarousel pkg={pkg} variant="card" className="aspect-[4/3] md:aspect-auto md:h-full md:min-h-64" />
+      <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+        {pkg.dealName && <Badge palette="caution" emphasis="bold" size="sm">{dealLabel(pkg.dealName)}</Badge>}
+        {pkg.savingsPct > 0 && <Badge palette="benefit" emphasis="bold" size="sm">Save {pkg.savingsPct}%</Badge>}
+      </div>
+      <div className="absolute bottom-3 left-3">
+        <Badge palette="neutral" emphasis="regular" size="sm" iconLeft="calendar_month">{tripDaysLabel(pkg)}</Badge>
+      </div>
+    </div>
+  )
+}
+
+function SummaryColumn({ pkg }: { pkg: NormalizedPackage }) {
+  const days = placeholderDays(pkg).slice(0, CARD_DAY_COUNT)
+  const activityCount = placeholderActivityCount(pkg)
 
   return (
-    <div className="pkg-pricing-footer">
+    <div className="flex flex-col gap-3 px-5 py-4">
       <div>
-        <Span textStyle="body3" style={{ color: '#496785', display: 'block', marginBottom: 2 }}>
-          Bundle total · {pkg.travelers} traveler{pkg.travelers > 1 ? 's' : ''}
-        </Span>
-        {pkg.bundleStrikethrough > 0 && (
-          <Price type="priceRetail" textStyle="body1" currencySymbol="$" price={String(Math.round(pkg.bundleStrikethrough))} />
+        <Heading as="h3" textStyle="heading5" palette="primary" shade="13" className="mb-1">
+          {tripTitle(pkg)}
+        </Heading>
+        <div className="flex flex-wrap items-center gap-2">
+          <Span textStyle="body3" palette="primary" shade="10">{tripMeta(pkg)}</Span>
+          {pkg.guestRating > 0 && (
+            <>
+              <ReviewBadge rating={pkg.guestRating.toFixed(1)} size="sm" />
+              <Span textStyle="body3" palette="neutral" shade="7">{placeholderReviewCount(pkg)} reviews</Span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="flight">Flight</Badge>
+        <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="hotel">Hotel</Badge>
+        {pkg.car && <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="directions_car">Car</Badge>}
+        {activityCount > 0 && (
+          <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="attractions">
+            {activityCount} Activities
+          </Badge>
         )}
-        {pkg.bundleTotal > 0 && (
-          <Price type="priceSale" textStyle="heading3" bold currencySymbol="$" price={String(Math.round(pkg.bundleTotal))} />
-        )}
+      </div>
+
+      <ol className="flex flex-col gap-1.5">
+        {days.map((d) => (
+          <li key={d.day} className="border-l-2 border-primary-4 pl-2.5">
+            <Span textStyle="body3" bold palette="primary" shade="8" className="mr-1.5">Day {d.day}</Span>
+            <Span textStyle="body3" palette="primary" shade="13">{d.title}</Span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mt-auto flex items-start gap-1.5">
+        <CdnIcon iconName="hotel" size="16" palette="primary" shade="8" />
+        <div className="min-w-0">
+          <Span textStyle="body3" bold palette="primary" shade="13">{pkg.hotelName}</Span>
+          <Span textStyle="body3" palette="primary" shade="10">
+            {' · '}{pkg.starRating > 0 ? `${pkg.starRating}-star · ` : ''}{pkg.nights} nights
+          </Span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PriceColumn({ pkg, onViewItinerary }: { pkg: NormalizedPackage; onViewItinerary: (p: NormalizedPackage) => void }) {
+  const perPerson = perPersonPrice(pkg)
+
+  return (
+    <div className="flex flex-col gap-4 border-t border-primary-4 px-5 py-4 md:border-t-0 md:border-l">
+      <ul className="flex flex-col gap-1.5">
+        {placeholderHighlights().map((h) => (
+          <li key={h.label} className="flex items-start gap-1.5">
+            <CdnIcon iconName="check" size="16" palette="benefit" shade="8" />
+            <Span textStyle="body3" palette="primary" shade="13">{h.label}</Span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-auto">
+        <Span textStyle="body3" palette="primary" shade="10" className="block">From</Span>
         {perPerson > 0 && (
-          <Span textStyle="body3" style={{ color: '#496785' }}>${perPerson.toLocaleString()}/person</Span>
+          <Price type="priceSale" textStyle="heading3" bold currencySymbol={pkg.currencySymbol} price={perPerson.toLocaleString()} />
         )}
+        <Span textStyle="body3" palette="primary" shade="10" className="block">
+          per person · <Span textStyle="body3" bold palette="primary" shade="13">${Math.round(pkg.bundleTotal).toLocaleString()} total</Span>
+        </Span>
+        <Span textStyle="body3" palette="benefit" shade="8" className="block">Taxes &amp; fees included</Span>
         {pkg.resortFee > 0 && (
-          <Span textStyle="body3" style={{ color: '#8399b0', display: 'block', marginTop: 2 }}>
+          <Span textStyle="body3" palette="neutral" shade="7" className="block">
             + ${pkg.resortFee} resort fee at hotel
           </Span>
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Detail links */}
-        <div style={{ display: 'flex', gap: 14 }}>
-          {onHotelDetails && (
-            <button className="pkg-detail-link" onClick={() => onHotelDetails(pkg)}>
-              🏨 Hotel Details ›
-            </button>
-          )}
-          {onFlightDetails && (
-            <button className="pkg-detail-link" onClick={() => onFlightDetails(pkg)}>
-              ✈ Flight Details ›
-            </button>
-          )}
-        </div>
-        <a href={bookUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-          <button
-            style={{ width: '100%', background: '#0068ef', border: 'none', borderRadius: 8, color: '#fff', fontFamily: "'Montserrat', Arial, sans-serif", fontSize: 14, fontWeight: 700, padding: '11px 24px', cursor: 'pointer' }}
-            onMouseOver={(e) => { (e.target as HTMLButtonElement).style.background = '#0053bf' }}
-            onMouseOut={(e) => { (e.target as HTMLButtonElement).style.background = '#0068ef' }}
-          >
-            Book Now
-          </button>
-        </a>
+      <div className="flex flex-col items-center gap-2">
+        <Button type="primary" fullWidth onClick={() => onViewItinerary(pkg)}>View Itinerary</Button>
+        <PlainA type="primary" href={bookUrl(pkg)} target="_blank" rel="noopener noreferrer">Book Now</PlainA>
       </div>
     </div>
   )
@@ -298,39 +202,17 @@ function PricingFooter({ pkg, onHotelDetails, onFlightDetails }: {
 
 interface PackageCardProps {
   pkg: NormalizedPackage
-  flightOverride?: NormalizedFlight
-  onHotelDetails?: (p: NormalizedPackage) => void
-  onFlightDetails?: (p: NormalizedPackage) => void
-  onChangeFlight?: (p: NormalizedPackage) => void
+  onViewItinerary: (p: NormalizedPackage) => void
 }
 
-export function PackageCard({ pkg, flightOverride, onHotelDetails, onFlightDetails, onChangeFlight }: PackageCardProps) {
+export function PackageCard({ pkg, onViewItinerary }: PackageCardProps) {
   return (
-    <div style={{ marginBottom: 20, animation: 'slideIn 0.3s cubic-bezier(0.22,1,0.36,1) both' }}>
-      <Card
-        as="div"
-        topSubPanel={
-          <div className="pkg-card-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Badge palette="marketingBrand" emphasis="bold" size="sm">
-                {pkg.dealName || 'FLIGHT + HOTEL'}
-              </Badge>
-              <Heading as="h2" textStyle="heading6" style={{ margin: 0, color: '#001833' }}>
-                {pkg.destination} · Cancun Area
-              </Heading>
-            </div>
-          </div>
-        }
-        bottomSubPanel={<PricingFooter pkg={pkg} onHotelDetails={onHotelDetails} onFlightDetails={onFlightDetails} />}
-        bottomSubPanelEmphasis="none"
-      >
-        <div className="pkg-card-body">
-          <HotelSection pkg={pkg} />
-          <FlightSection
-            pkg={pkg}
-            flightOverride={flightOverride}
-            onChangeFlight={onChangeFlight ? () => onChangeFlight(pkg) : undefined}
-          />
+    <div className="mb-5 [animation:slideIn_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+      <Card as="div" cardClassName="overflow-hidden p-0 text-left">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+          <ImageColumn pkg={pkg} />
+          <SummaryColumn pkg={pkg} />
+          <PriceColumn pkg={pkg} onViewItinerary={onViewItinerary} />
         </div>
       </Card>
     </div>
@@ -339,20 +221,22 @@ export function PackageCard({ pkg, flightOverride, onHotelDetails, onFlightDetai
 
 export function PackageCardSkeleton() {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <Card as="div">
-        <div style={{ padding: 20 }}>
-          <Skeleton type="h5" className="mb-4 w-48" />
-          <div className="pkg-card-body">
-            <div style={{ flex: 1 }}>
-              <Skeleton type="image" className="rounded-xl mb-3 h-44" />
-              <Skeleton type="h6" className="mb-2 w-3/4" />
-              <Skeleton type="body2" className="w-1/2" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Skeleton type="image" className="rounded-lg mb-3 h-20" />
-              <Skeleton type="image" className="rounded-lg h-16" />
-            </div>
+    <div className="mb-5">
+      <Card as="div" cardClassName="overflow-hidden p-0">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+          <Skeleton type="image" className="aspect-[4/3] md:aspect-auto md:h-full md:min-h-64" />
+          <div className="flex flex-col gap-3 px-5 py-4">
+            <Skeleton type="h5" className="w-3/4" />
+            <Skeleton type="body2" className="w-1/2" />
+            <Skeleton type="body2" className="w-2/3" />
+            <Skeleton type="body2" className="w-5/6" />
+            <Skeleton type="body2" className="w-4/6" />
+          </div>
+          <div className="flex flex-col gap-3 px-5 py-4">
+            <Skeleton type="body2" className="w-2/3" />
+            <Skeleton type="body2" className="w-1/2" />
+            <Skeleton type="h3" className="mt-auto w-1/2" />
+            <Skeleton type="btn_md" className="w-full" />
           </div>
         </div>
       </Card>

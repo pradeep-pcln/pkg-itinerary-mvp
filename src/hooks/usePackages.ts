@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { NormalizedFlight, NormalizedPackage } from '../types'
+import type { NormalizedPackage } from '../types'
 
 const SEARCH_PARAMS = {
   originAirport: 'EWR',
@@ -11,12 +11,11 @@ const SEARCH_PARAMS = {
   travelers: 2,
 }
 
-const CACHE_KEY = `pkg_cache_v2_${JSON.stringify(SEARCH_PARAMS)}`
+const CACHE_KEY = `pkg_cache_v5_${JSON.stringify(SEARCH_PARAMS)}`
 const CACHE_TTL_MS = 55 * 60 * 1000
 
 interface CacheData {
   packages: NormalizedPackage[]
-  flyItems: NormalizedFlight[]
   timestamp: number
 }
 
@@ -32,9 +31,9 @@ function readCache(): CacheData | null {
   }
 }
 
-function writeCache(packages: NormalizedPackage[], flyItems: NormalizedFlight[]) {
+function writeCache(packages: NormalizedPackage[]) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ packages, flyItems, timestamp: Date.now() }))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ packages, timestamp: Date.now() }))
   } catch {}
 }
 
@@ -45,7 +44,6 @@ export function clearPackageCache() {
 export function usePackages() {
   const cached = readCache()
   const [packages, setPackages] = useState<NormalizedPackage[]>(cached?.packages ?? [])
-  const [flyItems, setFlyItems] = useState<NormalizedFlight[]>(cached?.flyItems ?? [])
   const [loading, setLoading] = useState(cached === null)
   const [error, setError] = useState<string | null>(null)
   const [fromCache, setFromCache] = useState(cached !== null)
@@ -70,11 +68,9 @@ export function usePackages() {
         }
         const data = await res.json()
         const pkgs: NormalizedPackage[] = data.packages ?? []
-        const flights: NormalizedFlight[] = data.flyItems ?? []
         if (!cancelled) {
-          writeCache(pkgs, flights)
+          writeCache(pkgs)
           setPackages(pkgs)
-          setFlyItems(flights)
           setFromCache(false)
         }
       } catch (err) {
@@ -88,5 +84,5 @@ export function usePackages() {
     return () => { cancelled = true }
   }, [])
 
-  return { packages, flyItems, loading, error, fromCache, searchParams: SEARCH_PARAMS }
+  return { packages, loading, error, fromCache, searchParams: SEARCH_PARAMS }
 }

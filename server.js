@@ -491,6 +491,21 @@ function extractHotelId(stayItem) {
   return null
 }
 
+const MAX_HOTEL_IMAGES = 8
+
+function normalizeHotelImages(images) {
+  const seen = new Set()
+  const result = []
+  for (const img of images) {
+    const hdUrl = img?.imageHDUrl || img?.imageUrl || ''
+    if (!hdUrl || seen.has(hdUrl)) continue
+    seen.add(hdUrl)
+    result.push({ url: img?.imageUrl || hdUrl, hdUrl, caption: img?.genAIMetadata?.caption ?? '' })
+    if (result.length === MAX_HOTEL_IMAGES) break
+  }
+  return result
+}
+
 async function fetchHotelContent(hotelIds) {
   const uniqueIds = [...new Set(hotelIds.filter(Boolean))]
   if (!uniqueIds.length) return {}
@@ -508,16 +523,12 @@ async function fetchHotelContent(hotelIds) {
     const hotels = data?.hotels ?? []
     log('info', 'htl-content complete', { returned: hotels.length })
 
-    // Build map: hotelId → best image URL
+    // Build map: hotelId → first MAX_HOTEL_IMAGES unique images
     const imageMap = {}
     for (const hotel of hotels) {
       const id = String(hotel.hotelId ?? '')
       if (!id) continue
-      const images = hotel.images ?? []
-      const best = images[0]
-      if (best) {
-        imageMap[id] = best.imageHDUrl || best.imageUrl || ''
-      }
+      imageMap[id] = normalizeHotelImages(hotel.images ?? [])
     }
     return imageMap
   } catch (err) {
@@ -586,7 +597,8 @@ function normalizeProposal(proposal, stayItemsMap, flyItem, index, imageMap, air
   const nights = Math.round((ret.getTime() - depart.getTime()) / 86400000)
 
   const hotelId = extractHotelId(stayItem)
-  const heroImageUrl = (hotelId && imageMap[hotelId]) ? imageMap[hotelId] : ''
+  const hotelImages = (hotelId && imageMap[hotelId]) ? imageMap[hotelId] : []
+  const heroImageUrl = hotelImages[0]?.hdUrl ?? ''
 
   return {
     proposalIndex: index,
@@ -599,6 +611,7 @@ function normalizeProposal(proposal, stayItemsMap, flyItem, index, imageMap, air
     guestRating: stayItem?.itemContent?.guestRating ?? 0,
     thumbnailUrl: stayItem?.itemContent?.thumbnailUrl ?? '',
     heroImageUrl,
+    hotelImages,
     nightlyRate: priceOption?.displayPrice?.nightlyRate?.averageRate?.charge?.amount ?? 0,
     nightlyStrikethrough: priceOption?.displayPrice?.nightlyRate?.strikeThroughRate?.charge?.amount ?? 0,
     dealName: priceOption?.priceDeal?.dealProgramName ?? '',
@@ -704,19 +717,55 @@ async function fetchPackages({ originAirport, originMetroCode, destinationAirpor
     flyItems.flatMap(f => f?.slices?.flatMap(s => s?.segments?.map(seg => seg?.marketingAirlineCode)) ?? [])
   )].filter(Boolean)
 
-  // Fan out enrichment in parallel — both are best-effort, failures degrade gracefully
-  const [imageMap, airlineMap] = await Promise.all([
+  // Fan out enrichment in parallel — all best-effort, failures degrade gracefully
+  const [imageMap, airlineMap, rentalCars] = await Promise.all([
     fetchHotelContent(hotelIds),
     fetchAirlineMetadata(carrierCodes),
+    fetchRentalCars({
+      pickupLocation: destinationAirport,
+      returnLocation: destinationAirport,
+      pickupDateTime: toRcDateTime(departDate, '12:00'),
+      returnDateTime: toRcDateTime(returnDate, '10:00'),
+    })
+      .then((r) => r.rentalCars)
+      .catch((err) => {
+        log('warn', 'rc-availability failed, packages returned without car', { error: err.message })
+        return []
+      }),
   ])
 
+  const car = pickCheapestCar(rentalCars)
   const searchParams = { originAirport, destinationAirport, departDate, returnDate, travelers }
-  const { packages, flyItems: normalizedFlyItems } = normalizeSearchResult(json, imageMap, airlineMap, searchParams)
+  const { packages: basePackages, flyItems: normalizedFlyItems } = normalizeSearchResult(json, imageMap, airlineMap, searchParams)
+  const packages = car ? basePackages.map((pkg) => attachCar(pkg, car)) : basePackages.map((pkg) => ({ ...pkg, car: null }))
 
   return {
     packages,
     flyItems: normalizedFlyItems,
+    rentalCars,
     meta: { origin: originAirport, destination: destinationAirport, departDate, returnDate, travelers },
+  }
+}
+
+// rc-availability expects YYYYMMDDTHH:MM
+function toRcDateTime(dateStr, time) {
+  return `${dateStr.replaceAll('-', '')}T${time}`
+}
+
+function pickCheapestCar(cars) {
+  let cheapest = null
+  for (const c of cars) {
+    if (c.packageSupported && c.totalPrice > 0 && (!cheapest || c.totalPrice < cheapest.totalPrice)) cheapest = c
+  }
+  return cheapest
+}
+
+function attachCar(pkg, car) {
+  return {
+    ...pkg,
+    car,
+    bundleTotal: pkg.bundleTotal + car.totalPrice,
+    bundleStrikethrough: pkg.bundleStrikethrough > 0 ? pkg.bundleStrikethrough + car.totalPrice : 0,
   }
 }
 
@@ -861,7 +910,48 @@ app.post(['/debug/raw', '/cdns-pkg-ui/debug/raw'], express.json(), async (req, r
   }
 })
 
-function normalizeRentalCars(json, { pickupLocation, returnLocation, pickupDateTime, returnDateTime }) {
+function transmissionLabel(vehicleInfo) {
+  if (vehicleInfo?.automatic) return 'Automatic'
+  if (vehicleInfo?.manual) return 'Manual'
+  return ''
+}
+
+function absoluteUrl(url) {
+  return url?.startsWith('//') ? `https:${url}` : (url ?? '')
+}
+
+// rc-availability v0 returns rates keyed by id under availability.vehicleRates,
+// with vendor names in the separate availability.partners map
+function normalizeVehicleRates(availability, search) {
+  const partners = availability?.partners ?? {}
+  const currency = availability?.posCurrencyCode ?? 'USD'
+  return Object.values(availability.vehicleRates).map((rate) => {
+    const price = rate?.rates?.[currency] ?? Object.values(rate?.rates ?? {})[0] ?? {}
+    const images = rate?.vehicleInfo?.images ?? rate?.partnerInfo?.images ?? {}
+    return {
+      carGroupId: rate?.id ?? '',
+      carClass: rate?.vehicleCode ?? '',
+      carType: rate?.vehicleInfo?.description ?? '',
+      transmission: transmissionLabel(rate?.vehicleInfo),
+      vendor: partners[rate?.partnerCode]?.partnerName ?? rate?.partnerCode ?? '',
+      vendorCode: rate?.partnerCode ?? '',
+      imageUrl: absoluteUrl(images.SIZE335X180 ?? images.SIZE268X144),
+      totalPrice: Number(price.totalAllInclusivePrice ?? 0),
+      dailyRate: Number(price.basePrices?.DAILY ?? 0),
+      currencyCode: price.currencyCode ?? currency,
+      isExpressDeal: false,
+      isPrepaid: rate?.payAtBooking === true,
+      isPayLater: rate?.payAtBooking === false,
+      freeCancellation: rate?.freeCancellation ?? false,
+      packageSupported: rate?.packageSupported ?? false,
+      ...search,
+    }
+  })
+}
+
+function normalizeRentalCars(json, search) {
+  if (json?.availability?.vehicleRates) return normalizeVehicleRates(json.availability, search)
+  const { pickupLocation, returnLocation, pickupDateTime, returnDateTime } = search
   const items = json?.results ?? json?.carGroups ?? json?.vehicles ?? []
   const list = Array.isArray(items) ? items : []
   return list.map((item) => ({
@@ -879,6 +969,7 @@ function normalizeRentalCars(json, { pickupLocation, returnLocation, pickupDateT
     isPrepaid: item?.pricing?.retail?.prepaid != null,
     isPayLater: item?.pricing?.retail?.payLater != null,
     freeCancellation: item?.freeCancellation ?? false,
+    packageSupported: item?.packageSupported ?? false,
     pickupLocation,
     returnLocation,
     pickupDateTime,
