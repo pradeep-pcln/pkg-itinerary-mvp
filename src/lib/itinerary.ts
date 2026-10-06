@@ -1,4 +1,4 @@
-import type { NormalizedPackage } from '../types'
+import type { FlightLeg, NormalizedPackage } from '../types'
 
 const CITY_BY_CODE: Record<string, string> = {
   CUN: 'Cancun',
@@ -13,6 +13,98 @@ const CITY_BY_CODE: Record<string, string> = {
 
 export function cityName(code: string): string {
   return CITY_BY_CODE[code] ?? code
+}
+
+// Flight epochs and date strings are both treated as UTC so they render as airport-local wall time
+const TIME_FORMAT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' })
+const DAY_FORMAT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+const LONG_DAY_FORMAT = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
+const SHORT_DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+const WHOLE_NUMBER_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+
+const DAY_MS = 86_400_000
+
+function dateToUtc(date: string): Date {
+  return new Date(`${date}T12:00:00Z`)
+}
+
+function addDays(date: string, days: number): string {
+  return new Date(dateToUtc(date).getTime() + days * DAY_MS).toISOString().slice(0, 10)
+}
+
+export function epochToTime(seconds: string): string {
+  if (!seconds) return ''
+  return TIME_FORMAT.format(new Date(Number(seconds) * 1000))
+}
+
+// YYYY-MM-DD → "Mon, Sep 28"
+export function formatDate(date: string): string {
+  return DAY_FORMAT.format(dateToUtc(date))
+}
+
+// YYYY-MM-DD → "Monday, September 28"
+export function formatLongDate(date: string): string {
+  return LONG_DAY_FORMAT.format(dateToUtc(date))
+}
+
+// YYYY-MM-DD → "Sep 28"
+export function shortDate(date: string): string {
+  return SHORT_DATE_FORMAT.format(dateToUtc(date))
+}
+
+export function formatAmount(amount: number): string {
+  return WHOLE_NUMBER_FORMAT.format(Math.round(amount))
+}
+
+const RC_DATE_TIME = /^(\d{4})-?(\d{2})-?(\d{2})T(\d{2}):(\d{2})/
+
+// rc-availability date-times look like "20260928T12:00"
+export function carTime(dateTime: string): string {
+  const m = RC_DATE_TIME.exec(dateTime)
+  if (!m) return ''
+  const [, y, mo, d, h, mi] = m
+  return TIME_FORMAT.format(new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi))))
+}
+
+export function stopsLabel(legs: FlightLeg[]): string {
+  const stops = legs.length - 1
+  if (stops <= 0) return 'Nonstop'
+  const via = legs.slice(1).map((l) => l.origin).join(', ')
+  return `${stops} stop${stops > 1 ? 's' : ''} · ${via}`
+}
+
+// "Nonstop" or "1 stop"
+export function stopsCountLabel(legs: FlightLeg[]): string {
+  const stops = legs.length - 1
+  if (stops <= 0) return 'Nonstop'
+  return `${stops} stop${stops > 1 ? 's' : ''}`
+}
+
+// "Nonstop" or "1 stop via MIA"
+function stopsViaLabel(legs: FlightLeg[]): string {
+  const stops = legs.length - 1
+  if (stops <= 0) return 'Nonstop'
+  return `${stopsCountLabel(legs)} via ${legs.slice(1).map((l) => l.origin).join(', ')}`
+}
+
+export interface Layover {
+  airport: string
+  durationLabel: string
+}
+
+function durationLabel(fromSeconds: string, toSeconds: string): string {
+  const minutes = Math.round((Number(toSeconds) - Number(fromSeconds)) / 60)
+  if (!fromSeconds || !toSeconds || !Number.isFinite(minutes) || minutes <= 0) return ''
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+export function layovers(legs: FlightLeg[]): Layover[] {
+  return legs.slice(1).map((leg, i) => ({
+    airport: leg.origin,
+    durationLabel: durationLabel(legs[i].arriveTime, leg.departTime),
+  }))
 }
 
 const TITLE_SUFFIXES = ['Escape', 'Getaway', 'Retreat'] as const
@@ -41,55 +133,300 @@ export function tripMeta(pkg: NormalizedPackage): string {
   return `${tripDaysLabel(pkg)} · ${cityName(pkg.destination)}`
 }
 
-export interface ItineraryDay {
-  day: number
-  title: string
-  isPlaceholder: boolean
+export function travelersLabel(travelers: number): string {
+  return `${travelers} traveler${travelers > 1 ? 's' : ''}`
 }
 
-const MIDDLE_DAY_ACTIVITIES = [
-  'Beach day',
-  'Chichen Itza day trip',
-  'Isla Mujeres by ferry',
-  'Snorkel the Mesoamerican Reef',
-  'Cenote swim & Tulum ruins',
-  'Spa & pool day',
-]
+export function nightsLabel(nights: number): string {
+  return `${nights} night${nights === 1 ? '' : 's'}`
+}
 
-export function placeholderDays(pkg: NormalizedPackage): ItineraryDay[] {
-  const totalDays = pkg.nights + 1
-  const city = cityName(pkg.destination)
-  return Array.from({ length: totalDays }, (_, i) => {
-    const day = i + 1
-    if (day === 1) {
-      return { day, title: `Arrive in ${city} · check in at ${pkg.hotelName}`, isPlaceholder: true }
-    }
-    if (day === totalDays) {
-      return { day, title: 'Check out · fly home', isPlaceholder: true }
-    }
-    return { day, title: MIDDLE_DAY_ACTIVITIES[(i - 1) % MIDDLE_DAY_ACTIVITIES.length], isPlaceholder: true }
+// Only the outbound carrier name is resolved server-side; other carriers fall back to their code
+function airlineName(pkg: NormalizedPackage, legs: FlightLeg[]): string {
+  const carrier = legs[0]?.carrier ?? ''
+  return carrier === pkg.outboundLegs[0]?.carrier ? pkg.airline : carrier
+}
+
+export interface FlightCard {
+  direction: 'Outbound' | 'Return'
+  date: string
+  from: string
+  to: string
+  departTime: string
+  arriveTime: string
+  isNonstop: boolean
+  stopsLabel: string
+  airline: string
+  airlineLogoUrl: string
+  layovers: Layover[]
+}
+
+export function flightCards(pkg: NormalizedPackage): FlightCard[] {
+  const slices: Array<[FlightCard['direction'], string, FlightLeg[]]> = [
+    ['Outbound', pkg.departDate, pkg.outboundLegs],
+    ['Return', pkg.returnDate, pkg.returnLegs],
+  ]
+  return slices.flatMap(([direction, date, legs]) => {
+    if (legs.length === 0) return []
+    const first = legs[0]
+    const last = legs[legs.length - 1]
+    const airline = airlineName(pkg, legs)
+    return [{
+      direction,
+      date,
+      from: first.origin,
+      to: last.destination,
+      departTime: epochToTime(first.departTime),
+      arriveTime: epochToTime(last.arriveTime),
+      isNonstop: legs.length === 1,
+      stopsLabel: stopsCountLabel(legs),
+      airline,
+      airlineLogoUrl: airline === pkg.airline ? pkg.airlineLogoUrl : '',
+      layovers: layovers(legs),
+    }]
   })
 }
 
-export interface ItineraryHighlight {
+export type ItineraryItemKind = 'flight' | 'car' | 'hotel' | 'meal'
+
+export interface ItineraryItem {
+  kind: ItineraryItemKind
+  // Empty when the time isn't known (car and hotel times are search defaults, not real times)
+  time: string
+  title: string
+  description: string
+  location?: string
+  categoryLabel: string
+}
+
+export interface ItineraryDay {
+  day: number
+  date: string
+  // Short name shown under "Day N" in the tab
+  tabLabel: string
+  title: string
+  description: string
+  items: ItineraryItem[]
+  // Middle days with no booked travel; Phase 5 fills these with suggestions
+  isFreeDay: boolean
+}
+
+function flightItem(pkg: NormalizedPackage, legs: FlightLeg[]): ItineraryItem[] {
+  if (legs.length === 0) return []
+  const first = legs[0]
+  const last = legs[legs.length - 1]
+  const departTime = epochToTime(first.departTime)
+  const arriveTime = epochToTime(last.arriveTime)
+  const times = departTime && arriveTime ? `${departTime} – ${arriveTime}` : ''
+  const description = [airlineName(pkg, legs), stopsViaLabel(legs), times].filter(Boolean).join(' · ')
+  return [{
+    kind: 'flight',
+    time: departTime,
+    title: `${first.origin} → ${last.destination}`,
+    description,
+    categoryLabel: 'Flight',
+  }]
+}
+
+function carPickupItem(pkg: NormalizedPackage): ItineraryItem[] {
+  if (!pkg.car) return []
+  return [{
+    kind: 'car',
+    time: '',
+    title: 'Pick up your rental car',
+    description: [pkg.car.vendor, pkg.car.carType].filter(Boolean).join(' · '),
+    location: pkg.car.pickupLocation,
+    categoryLabel: 'Transportation',
+  }]
+}
+
+function carReturnItem(pkg: NormalizedPackage): ItineraryItem[] {
+  if (!pkg.car) return []
+  return [{
+    kind: 'car',
+    time: '',
+    title: 'Return your rental car',
+    description: [pkg.car.vendor, pkg.car.carType].filter(Boolean).join(' · '),
+    location: pkg.car.returnLocation,
+    categoryLabel: 'Transportation',
+  }]
+}
+
+function hotelDetails(pkg: NormalizedPackage): string {
+  return [pkg.starRating > 0 ? `${pkg.starRating}-star` : '', nightsLabel(pkg.nights)].filter(Boolean).join(' · ')
+}
+
+function checkInItem(pkg: NormalizedPackage): ItineraryItem {
+  return { kind: 'hotel', time: '', title: `Check in at ${pkg.hotelName}`, description: hotelDetails(pkg), categoryLabel: 'Hotel' }
+}
+
+function checkOutItem(pkg: NormalizedPackage): ItineraryItem {
+  return { kind: 'hotel', time: '', title: `Check out of ${pkg.hotelName}`, description: hotelDetails(pkg), categoryLabel: 'Hotel' }
+}
+
+function mealItem(pkg: NormalizedPackage): ItineraryItem[] {
+  if (!pkg.allInclusive) return []
+  return [{
+    kind: 'meal',
+    time: '',
+    title: `All-inclusive dining at ${pkg.hotelName}`,
+    description: 'Meals and drinks are included with your stay',
+    categoryLabel: 'Meal',
+  }]
+}
+
+function flightPhrase(pkg: NormalizedPackage, legs: FlightLeg[]): string {
+  if (legs.length === 0) return ''
+  const airline = airlineName(pkg, legs)
+  return `fly ${legs[0].origin} to ${legs[legs.length - 1].destination}${airline ? ` on ${airline}` : ''}`
+}
+
+// Joins clauses as "a, b and c." with the first letter capitalized
+function sentence(clauses: string[]): string {
+  const parts = clauses.filter(Boolean)
+  if (parts.length === 0) return ''
+  const text = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`
+}
+
+function arrivalDescription(pkg: NormalizedPackage): string {
+  return sentence([
+    flightPhrase(pkg, pkg.outboundLegs),
+    pkg.car ? 'pick up your car' : '',
+    `check in at ${pkg.hotelName}`,
+  ])
+}
+
+function departureDescription(pkg: NormalizedPackage): string {
+  return sentence([
+    `check out of ${pkg.hotelName}`,
+    pkg.car ? 'return your car' : '',
+    flightPhrase(pkg, pkg.returnLegs),
+  ])
+}
+
+function freeDayDescription(pkg: NormalizedPackage): string {
+  const city = cityName(pkg.destination)
+  return pkg.allInclusive
+    ? `Explore ${city} or stay in at ${pkg.hotelName}, with meals and drinks included.`
+    : `Nothing is booked, so the day is yours to explore ${city}.`
+}
+
+export function buildItineraryDays(pkg: NormalizedPackage): ItineraryDay[] {
+  const totalDays = Math.max(pkg.nights, 0) + 1
+  const city = cityName(pkg.destination)
+  const arrivalItems = [...flightItem(pkg, pkg.outboundLegs), ...carPickupItem(pkg), checkInItem(pkg)]
+  const departureItems = [checkOutItem(pkg), ...carReturnItem(pkg), ...flightItem(pkg, pkg.returnLegs)]
+
+  return Array.from({ length: totalDays }, (_, i): ItineraryDay => {
+    const day = i + 1
+    const date = addDays(pkg.departDate, i)
+    const isFirst = day === 1
+    const isLast = day === totalDays
+    if (isFirst && isLast) {
+      return {
+        day, date, tabLabel: 'Arrival & departure', title: `Arrive in ${city} · fly home`,
+        description: `${arrivalDescription(pkg)} ${departureDescription(pkg)}`,
+        items: [...arrivalItems, ...departureItems], isFreeDay: false,
+      }
+    }
+    if (isFirst) {
+      return { day, date, tabLabel: 'Arrival', title: `Arrive in ${city}`, description: arrivalDescription(pkg), items: arrivalItems, isFreeDay: false }
+    }
+    if (isLast) {
+      return { day, date, tabLabel: 'Departure', title: 'Check out · fly home', description: departureDescription(pkg), items: departureItems, isFreeDay: false }
+    }
+    return { day, date, tabLabel: 'Free day', title: `Free day in ${city}`, description: freeDayDescription(pkg), items: mealItem(pkg), isFreeDay: true }
+  })
+}
+
+export function tripHighlights(pkg: NormalizedPackage): string[] {
+  const candidates: Array<[boolean, string]> = [
+    [true, pkg.airline ? `Round-trip flights on ${pkg.airline}` : 'Round-trip flights'],
+    [pkg.nights > 0, `${nightsLabel(pkg.nights)} at ${pkg.hotelName}`],
+    [pkg.car !== null, `Rental car${pkg.car?.vendor ? ` from ${pkg.car.vendor}` : ''}`],
+    [pkg.allInclusive, 'All-Inclusive'],
+    [pkg.freeCancellation, 'Free hotel cancellation'],
+  ]
+  return candidates.flatMap(([show, label]) => (show ? [label] : []))
+}
+
+export function packageIncludes(pkg: NormalizedPackage): string[] {
+  // The flown airport can differ from the searched one (JFK for an EWR search)
+  const from = pkg.outboundLegs[0]?.origin || pkg.origin
+  const to = pkg.outboundLegs[pkg.outboundLegs.length - 1]?.destination || pkg.destination
+  const candidates: Array<[boolean, string]> = [
+    [true, `Round-trip flights ${from} ⇄ ${to}`],
+    [pkg.nights > 0, `${pkg.nights}-night stay at ${pkg.hotelName}`],
+    [pkg.car !== null, `Rental car${pkg.car?.vendor ? ` from ${pkg.car.vendor}` : ''}`],
+    [pkg.allInclusive, 'All-inclusive meals & drinks'],
+    [pkg.freeCancellation, 'Free hotel cancellation'],
+  ]
+  return candidates.flatMap(([show, label]) => (show ? [label] : []))
+}
+
+// TODO: fixed copy, confirm wording with product
+export function packageExcludes(pkg: NormalizedPackage): string[] {
+  const candidates: Array<[boolean, string]> = [
+    [true, 'Travel insurance'],
+    [true, 'Activities & excursions'],
+    [!pkg.allInclusive, 'Meals'],
+    [pkg.resortFee > 0, `Resort fee of ${pkg.currencySymbol}${formatAmount(pkg.resortFee)}, paid at hotel`],
+    [true, 'Gratuities'],
+    [true, 'Personal expenses'],
+  ]
+  return candidates.flatMap(([show, label]) => (show ? [label] : []))
+}
+
+export interface TripIncludeItem {
+  kind: ItineraryItemKind
   label: string
-  isPlaceholder: boolean
 }
 
-const HIGHLIGHTS: ItineraryHighlight[] = [
-  { label: 'Round-trip flights included', isPlaceholder: true },
-  { label: 'Beachfront hotel stay', isPlaceholder: true },
-  { label: 'Guided Chichen Itza tour', isPlaceholder: true },
-  { label: '24/7 travel support', isPlaceholder: true },
-]
-
-export function placeholderHighlights(): ItineraryHighlight[] {
-  return HIGHLIGHTS
+export function tripIncludes(pkg: NormalizedPackage): TripIncludeItem[] {
+  const candidates: Array<[boolean, TripIncludeItem]> = [
+    [true, { kind: 'flight', label: 'Round-trip flights' }],
+    [pkg.nights > 0, { kind: 'hotel', label: `${pkg.nights}-night hotel` }],
+    [pkg.car !== null, { kind: 'car', label: 'Rental car' }],
+    [pkg.allInclusive, { kind: 'meal', label: 'All-inclusive' }],
+  ]
+  return candidates.flatMap(([show, item]) => (show ? [item] : []))
 }
 
-// Middle days of placeholderDays are the "activities"
-export function placeholderActivityCount(pkg: NormalizedPackage): number {
-  return Math.max(pkg.nights - 1, 0)
+export interface PriceLine {
+  label: string
+  amount: number
+}
+
+export interface PriceBreakdown {
+  // "$1,234 × 2 travelers"; null when there's no per-person price
+  perTravelerLine: PriceLine | null
+  lines: PriceLine[]
+  total: number
+  perPerson: number
+  savings: number
+  // Collected by the hotel at checkout, not part of `total`
+  resortFee: number
+}
+
+export function priceBreakdown(pkg: NormalizedPackage): PriceBreakdown {
+  // The server folds the car price into bundleTotal, so back it out for the flight + hotel line
+  const carTotal = pkg.car?.totalPrice ?? 0
+  const perPerson = perPersonPrice(pkg)
+  const candidates: Array<[boolean, PriceLine]> = [
+    [true, { label: 'Flight + Hotel', amount: pkg.bundleTotal - carTotal }],
+    [carTotal > 0, { label: 'Rental car', amount: carTotal }],
+  ]
+  return {
+    perTravelerLine: perPerson > 0
+      ? { label: `${pkg.currencySymbol}${formatAmount(perPerson)} × ${travelersLabel(pkg.travelers)}`, amount: pkg.bundleTotal }
+      : null,
+    lines: candidates.flatMap(([show, line]) => (show ? [line] : [])),
+    total: pkg.bundleTotal,
+    perPerson,
+    savings: Math.max(pkg.bundleStrikethrough - pkg.bundleTotal, 0),
+    resortFee: pkg.resortFee,
+  }
 }
 
 export function bookUrl(pkg: NormalizedPackage): string {

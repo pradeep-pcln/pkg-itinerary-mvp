@@ -6,6 +6,7 @@ import {
   CdnIcon,
   Heading,
   PlainA,
+  PlainButton,
   Price,
   ReviewBadge,
   Skeleton,
@@ -14,22 +15,23 @@ import {
 import { useState } from 'react'
 import {
   bookUrl,
+  buildItineraryDays,
   dealLabel,
+  formatAmount,
+  nightsLabel,
   perPersonPrice,
-  placeholderActivityCount,
-  placeholderDays,
-  placeholderHighlights,
   tripDaysLabel,
+  tripHighlights,
   tripMeta,
   tripTitle,
 } from '../lib/itinerary'
 import type { NormalizedPackage } from '../types'
+import { loadItineraryDrawer } from './itinerary/loadItineraryDrawer'
 
 const CARD_DAY_COUNT = 3
 
-// Deterministic stand-in until a review-count source exists
-function placeholderReviewCount(pkg: NormalizedPackage): number {
-  return 120 + ((pkg.proposalIndex * 37) % 400)
+function preloadItineraryDrawer() {
+  void loadItineraryDrawer()
 }
 
 export function TripImage({ pkg, className }: { pkg: NormalizedPackage; className?: string }) {
@@ -95,8 +97,8 @@ export function HotelCarousel({ pkg, variant, className }: HotelCarouselProps) {
 
 function ImageColumn({ pkg }: { pkg: NormalizedPackage }) {
   return (
-    <div className="relative">
-      <HotelCarousel pkg={pkg} variant="card" className="aspect-[4/3] md:aspect-auto md:h-full md:min-h-64" />
+    <div className="relative h-[200px] md:h-full md:min-h-[270px]">
+      <HotelCarousel pkg={pkg} variant="card" className="h-full" />
       <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
         {pkg.dealName && <Badge palette="caution" emphasis="bold" size="sm">{dealLabel(pkg.dealName)}</Badge>}
         {pkg.savingsPct > 0 && <Badge palette="benefit" emphasis="bold" size="sm">Save {pkg.savingsPct}%</Badge>}
@@ -108,53 +110,61 @@ function ImageColumn({ pkg }: { pkg: NormalizedPackage }) {
   )
 }
 
-function SummaryColumn({ pkg }: { pkg: NormalizedPackage }) {
-  const days = placeholderDays(pkg).slice(0, CARD_DAY_COUNT)
-  const activityCount = placeholderActivityCount(pkg)
+function SummaryColumn({ pkg, onViewItinerary }: { pkg: NormalizedPackage; onViewItinerary: (p: NormalizedPackage) => void }) {
+  const days = buildItineraryDays(pkg)
+  const preview = days.slice(0, CARD_DAY_COUNT)
+  const moreDays = days.length - CARD_DAY_COUNT
 
   return (
-    <div className="flex flex-col gap-3 px-5 py-4">
+    <div className="flex flex-col gap-3">
       <div>
         <Heading as="h3" textStyle="heading5" palette="primary" shade="13" className="mb-1">
           {tripTitle(pkg)}
         </Heading>
         <div className="flex flex-wrap items-center gap-2">
-          <Span textStyle="body3" palette="primary" shade="10">{tripMeta(pkg)}</Span>
-          {pkg.guestRating > 0 && (
-            <>
-              <ReviewBadge rating={pkg.guestRating.toFixed(1)} size="sm" />
-              <Span textStyle="body3" palette="neutral" shade="7">{placeholderReviewCount(pkg)} reviews</Span>
-            </>
-          )}
+          <Span textStyle="body2" palette="primary" shade="10">{tripMeta(pkg)}</Span>
+          {pkg.guestRating > 0 ? <ReviewBadge rating={pkg.guestRating.toFixed(1)} size="sm" /> : null}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
         <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="flight">Flight</Badge>
         <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="hotel">Hotel</Badge>
-        {pkg.car && <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="directions_car">Car</Badge>}
-        {activityCount > 0 && (
-          <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="attractions">
-            {activityCount} Activities
-          </Badge>
-        )}
+        {pkg.car ? <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="directions_car">Car</Badge> : null}
       </div>
 
       <ol className="flex flex-col gap-1.5">
-        {days.map((d) => (
+        {preview.map((d) => (
           <li key={d.day} className="border-l-2 border-primary-4 pl-2.5">
-            <Span textStyle="body3" bold palette="primary" shade="8" className="mr-1.5">Day {d.day}</Span>
-            <Span textStyle="body3" palette="primary" shade="13">{d.title}</Span>
+            <Span textStyle="body2" bold palette="primary" shade="8" className="mr-1.5">Day {d.day}</Span>
+            {d.isFreeDay ? (
+              <Span textStyle="body2" palette="neutral" shade="7">{d.title}</Span>
+            ) : (
+              <Span textStyle="body2" palette="primary" shade="13">{d.title}</Span>
+            )}
           </li>
         ))}
       </ol>
 
-      <div className="mt-auto flex items-start gap-1.5">
-        <CdnIcon iconName="hotel" size="16" palette="primary" shade="8" />
+      {moreDays > 0 ? (
+        <PlainButton
+          type="primary"
+          textStyle="body2"
+          className="self-start"
+          onClick={() => onViewItinerary(pkg)}
+        >
+          See {moreDays} more day{moreDays === 1 ? '' : 's'}
+        </PlainButton>
+      ) : null}
+
+      <div className="flex items-start gap-2">
+        <span className="flex h-5 shrink-0 items-center">
+          <CdnIcon iconName="hotel" size="20" palette="primary" shade="8" />
+        </span>
         <div className="min-w-0">
-          <Span textStyle="body3" bold palette="primary" shade="13">{pkg.hotelName}</Span>
-          <Span textStyle="body3" palette="primary" shade="10">
-            {' · '}{pkg.starRating > 0 ? `${pkg.starRating}-star · ` : ''}{pkg.nights} nights
+          <Span textStyle="body2" bold palette="primary" shade="13" className="block">{pkg.hotelName}</Span>
+          <Span textStyle="body2" palette="primary" shade="10" className="block">
+            {pkg.starRating > 0 ? `${pkg.starRating}-star · ` : ''}{nightsLabel(pkg.nights)}
           </Span>
         </div>
       </div>
@@ -166,34 +176,42 @@ function PriceColumn({ pkg, onViewItinerary }: { pkg: NormalizedPackage; onViewI
   const perPerson = perPersonPrice(pkg)
 
   return (
-    <div className="flex flex-col gap-4 border-t border-primary-4 px-5 py-4 md:border-t-0 md:border-l">
+    <div className="flex flex-col gap-4">
       <ul className="flex flex-col gap-1.5">
-        {placeholderHighlights().map((h) => (
-          <li key={h.label} className="flex items-start gap-1.5">
+        {tripHighlights(pkg).map((h) => (
+          <li key={h} className="flex items-start gap-1.5">
             <CdnIcon iconName="check" size="16" palette="benefit" shade="8" />
-            <Span textStyle="body3" palette="primary" shade="13">{h.label}</Span>
+            <Span textStyle="body3" palette="primary" shade="13">{h}</Span>
           </li>
         ))}
       </ul>
 
       <div className="mt-auto">
         <Span textStyle="body3" palette="primary" shade="10" className="block">From</Span>
-        {perPerson > 0 && (
-          <Price type="priceSale" textStyle="heading3" bold currencySymbol={pkg.currencySymbol} price={perPerson.toLocaleString()} />
-        )}
+        {perPerson > 0 ? (
+          <Price type="priceSale" textStyle="heading3" bold currencySymbol={pkg.currencySymbol} price={formatAmount(perPerson)} />
+        ) : null}
         <Span textStyle="body3" palette="primary" shade="10" className="block">
-          per person · <Span textStyle="body3" bold palette="primary" shade="13">${Math.round(pkg.bundleTotal).toLocaleString()} total</Span>
+          per person · <Span textStyle="body3" bold palette="primary" shade="13">{pkg.currencySymbol}{formatAmount(pkg.bundleTotal)} total</Span>
         </Span>
         <Span textStyle="body3" palette="benefit" shade="8" className="block">Taxes &amp; fees included</Span>
-        {pkg.resortFee > 0 && (
+        {pkg.resortFee > 0 ? (
           <Span textStyle="body3" palette="neutral" shade="7" className="block">
-            + ${pkg.resortFee} resort fee at hotel
+            + {pkg.currencySymbol}{formatAmount(pkg.resortFee)} resort fee at hotel
           </Span>
-        )}
+        ) : null}
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <Button type="primary" fullWidth onClick={() => onViewItinerary(pkg)}>View Itinerary</Button>
+        <Button
+          type="primary"
+          fullWidth
+          onClick={() => onViewItinerary(pkg)}
+          onMouseEnter={preloadItineraryDrawer}
+          onFocus={preloadItineraryDrawer}
+        >
+          View Itinerary
+        </Button>
         <PlainA type="primary" href={bookUrl(pkg)} target="_blank" rel="noopener noreferrer">Book Now</PlainA>
       </div>
     </div>
@@ -209,10 +227,12 @@ export function PackageCard({ pkg, onViewItinerary }: PackageCardProps) {
   return (
     <div className="mb-5 [animation:slideIn_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
       <Card as="div" cardClassName="overflow-hidden p-0 text-left">
-        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <ImageColumn pkg={pkg} />
-          <SummaryColumn pkg={pkg} />
-          <PriceColumn pkg={pkg} onViewItinerary={onViewItinerary} />
+          <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-[minmax(0,3fr)_minmax(196px,2fr)]">
+            <SummaryColumn pkg={pkg} onViewItinerary={onViewItinerary} />
+            <PriceColumn pkg={pkg} onViewItinerary={onViewItinerary} />
+          </div>
         </div>
       </Card>
     </div>
@@ -223,20 +243,24 @@ export function PackageCardSkeleton() {
   return (
     <div className="mb-5">
       <Card as="div" cardClassName="overflow-hidden p-0">
-        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
-          <Skeleton type="image" className="aspect-[4/3] md:aspect-auto md:h-full md:min-h-64" />
-          <div className="flex flex-col gap-3 px-5 py-4">
-            <Skeleton type="h5" className="w-3/4" />
-            <Skeleton type="body2" className="w-1/2" />
-            <Skeleton type="body2" className="w-2/3" />
-            <Skeleton type="body2" className="w-5/6" />
-            <Skeleton type="body2" className="w-4/6" />
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+          <div className="h-[200px] md:h-full md:min-h-[270px]">
+            <Skeleton type="image" className="size-full" width="100%" height="100%" />
           </div>
-          <div className="flex flex-col gap-3 px-5 py-4">
-            <Skeleton type="body2" className="w-2/3" />
-            <Skeleton type="body2" className="w-1/2" />
-            <Skeleton type="h3" className="mt-auto w-1/2" />
-            <Skeleton type="btn_md" className="w-full" />
+          <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-[minmax(0,3fr)_minmax(196px,2fr)]">
+            <div className="flex flex-col gap-3">
+              <Skeleton type="h5" className="w-3/4" />
+              <Skeleton type="body2" className="w-1/2" />
+              <Skeleton type="body2" className="w-2/3" />
+              <Skeleton type="body2" className="w-5/6" />
+              <Skeleton type="body2" className="w-4/6" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <Skeleton type="body3" className="w-2/3" />
+              <Skeleton type="body3" className="w-1/2" />
+              <Skeleton type="h3" className="mt-auto w-1/2" />
+              <Skeleton type="btn_md" className="w-full" />
+            </div>
           </div>
         </div>
       </Card>

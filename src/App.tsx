@@ -1,12 +1,12 @@
 import { Button, Heading, P, Span, Spinner } from '@pcln/horizon'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { GlobalHeader, GlobalFooter } from './components/GlobalHeader'
 import { FilterSidebar, DEFAULT_FILTERS, applyFilters } from './components/FilterSidebar'
 import type { Filters } from './components/FilterSidebar'
 import { PackageCard, PackageCardSkeleton } from './components/PackageCard'
-import { ItineraryDrawer } from './components/ItineraryDrawer'
+import { LazyItineraryDrawer } from './components/itinerary/loadItineraryDrawer'
 import { usePackages, clearPackageCache } from './hooks/usePackages'
-import { cityName } from './lib/itinerary'
+import { cityName, shortDate } from './lib/itinerary'
 import type { NormalizedPackage } from './types'
 
 const AIRPORTS: Record<string, string> = {
@@ -15,10 +15,6 @@ const AIRPORTS: Record<string, string> = {
 }
 function airportLabel(code: string) {
   return AIRPORTS[code] ? `${AIRPORTS[code]} (${code})` : code
-}
-
-function shortDate(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function nightsBetween(depart: string, ret: string) {
@@ -36,12 +32,27 @@ const GLOBAL_STYLES = `
 
   /* Two-column layout: sidebar + cards */
   .pkg-layout {
-    max-width: 1160px;
+    max-width: 1440px;
     margin: 0 auto;
-    padding: 24px 16px;
+    padding: 24px;
     display: flex;
-    gap: 24px;
+    gap: 28px;
     align-items: flex-start;
+  }
+  .pkg-search-bar {
+    background: #003c8a;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .pkg-search-inner {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
   }
   .filter-sidebar-desktop {
     display: none;
@@ -49,7 +60,7 @@ const GLOBAL_STYLES = `
   @media (min-width: 900px) {
     .filter-sidebar-desktop {
       display: block;
-      width: 260px;
+      width: 280px;
       flex-shrink: 0;
       background: #fff;
       border: 1px solid #d2e6ff;
@@ -98,27 +109,29 @@ export default function App() {
 
       <GlobalHeader />
 
-      {/* Search bar */}
-      <div style={{ background: '#003c8a', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const, position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '8px 16px', flex: 1, minWidth: 200, maxWidth: 560 }}>
-          <span style={{ fontSize: 15 }}>✈️</span>
-          <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{airportLabel(searchParams.originAirport)}</span>
-          <span style={{ color: '#b3d4ff', fontWeight: 600, margin: '0 4px' }}>→</span>
-          <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{airportLabel(searchParams.destinationAirport)}</span>
-          <span style={{ color: 'rgba(255,255,255,0.35)', margin: '0 4px' }}>·</span>
-          <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{searchParams.departDate} – {searchParams.returnDate}</span>
-          <span style={{ color: 'rgba(255,255,255,0.35)', margin: '0 4px' }}>·</span>
-          <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{searchParams.travelers} traveler{searchParams.travelers > 1 ? 's' : ''}</span>
+      {/* Search bar — full-width blue, content aligned to the results container */}
+      <div className="pkg-search-bar">
+        <div className="pkg-search-inner">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '8px 16px', flex: 1, minWidth: 200, maxWidth: 560 }}>
+            <span style={{ fontSize: 15 }}>✈️</span>
+            <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{airportLabel(searchParams.originAirport)}</span>
+            <span style={{ color: '#b3d4ff', fontWeight: 600, margin: '0 4px' }}>→</span>
+            <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{airportLabel(searchParams.destinationAirport)}</span>
+            <span style={{ color: 'rgba(255,255,255,0.35)', margin: '0 4px' }}>·</span>
+            <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{searchParams.departDate} – {searchParams.returnDate}</span>
+            <span style={{ color: 'rgba(255,255,255,0.35)', margin: '0 4px' }}>·</span>
+            <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{searchParams.travelers} traveler{searchParams.travelers > 1 ? 's' : ''}</span>
+          </div>
+          {fromCache && (
+            <span style={{ background: 'rgba(0,104,239,0.2)', color: '#b3d4ff', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, border: '1px solid rgba(0,104,239,0.4)' }}>⚡ cached</span>
+          )}
+          <button
+            onClick={handleRefresh}
+            style={{ background: '#0068ef', border: 'none', borderRadius: 8, color: '#fff', fontFamily: "'Montserrat', Arial, sans-serif", fontSize: 13, fontWeight: 700, padding: '9px 20px', cursor: 'pointer' }}
+          >
+            Search Again
+          </button>
         </div>
-        {fromCache && (
-          <span style={{ background: 'rgba(0,104,239,0.2)', color: '#b3d4ff', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, border: '1px solid rgba(0,104,239,0.4)' }}>⚡ cached</span>
-        )}
-        <button
-          onClick={handleRefresh}
-          style={{ background: '#0068ef', border: 'none', borderRadius: 8, color: '#fff', fontFamily: "'Montserrat', Arial, sans-serif", fontSize: 13, fontWeight: 700, padding: '9px 20px', cursor: 'pointer' }}
-        >
-          Search Again
-        </button>
       </div>
 
       {/* Main two-column layout */}
@@ -214,7 +227,11 @@ export default function App() {
         </div>
       </div>
 
-      <ItineraryDrawer pkg={itineraryPkg} open={itineraryOpen} onOpenChange={setItineraryOpen} />
+      {itineraryPkg ? (
+        <Suspense fallback={null}>
+          <LazyItineraryDrawer pkg={itineraryPkg} open={itineraryOpen} onOpenChange={setItineraryOpen} />
+        </Suspense>
+      ) : null}
 
       <GlobalFooter />
     </div>
