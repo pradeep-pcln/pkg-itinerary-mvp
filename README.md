@@ -1,6 +1,6 @@
-# mobility-vibes
+# package-itinerary-mvp
 
-A dedicated prototyping playground for non-engineers to safely experiment with AI-assisted ("vibe") coding at Priceline — without compromising engineering standards, security, or the SDLC.
+A dedicated prototyping demonstrating how itinerary can be created day by day for packages
 
 > **Full details:** [Vibing For Non-Engineers](https://priceline.atlassian.net/wiki/spaces/RC/pages/11215798432/Vibing+For+Non-Engineers) on Confluence
 
