@@ -1,12 +1,12 @@
 {
-  "name": "cdns-pkg-ui",
+  "name": "pkg-itinerary-mvp",
   "group": "Packages",
-  "flag": "cdns-pkg-ui",
+  "flag": "pkg-itinerary-mvp",
   "port": 5173,
-  "urlPath": "/cdns-pkg-ui",
-  "code": "cdns-pkg-ui",
+  "urlPath": "/pkg-itinerary-mvp",
+  "code": "pkg-itinerary-mvp",
   "nginx": [
-    "location ^~ /cdns-pkg-ui {",
+    "location ^~ /pkg-itinerary-mvp {",
     "  proxy_set_header X-Forwarded-Proto https;",
     "  proxy_set_header Host $host;",
     "  proxy_pass http://host.docker.internal:5173;",
@@ -21,7 +21,7 @@
     }
   ],
   "env": {
-    "APP_NAME": "cdns-pkg-ui",
+    "APP_NAME": "pkg-itinerary-mvp",
     "PORT": "3001"
   }
 }

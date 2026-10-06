@@ -83,7 +83,7 @@ async function fetchGlobalHeader(req, res) {
   return _headerCache
 }
 
-app.get(['/api/header', '/cdns-pkg-ui/api/header'], async (req, res) => {
+app.get(['/api/header', '/pkg-itinerary-mvp/api/header'], async (req, res) => {
   res.json(await fetchGlobalHeader(req, res))
 })
 ```
@@ -101,7 +101,7 @@ proxy: {
     changeOrigin: true,
     secure: false,
   },
-  // ... your existing /cdns-pkg-ui/api proxies ...
+  // ... your existing /pkg-itinerary-mvp/api proxies ...
 }
 ```
 
@@ -122,7 +122,7 @@ let _promise: Promise<HeaderData> | null = null
 function loadHeader(): Promise<HeaderData> {
   if (_cache) return Promise.resolve(_cache)
   if (_promise) return _promise
-  _promise = fetch('/cdns-pkg-ui/api/header')
+  _promise = fetch('/pkg-itinerary-mvp/api/header')
     .then(r => r.json())
     .then(data => { _cache = data; return data })
     .catch(() => ({ headerHTML: '', footerHTML: '', installerHTML: '' }))

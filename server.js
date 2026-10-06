@@ -63,7 +63,7 @@ function grpcCreateRequestCache(request) {
 }
 
 // --- HTTPS POST helper (supports query strings in URL) ---
-function post(url, body) {
+function post(url, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url)
     const data = JSON.stringify(body)
@@ -77,6 +77,7 @@ function post(url, body) {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Content-Length': Buffer.byteLength(data),
+          ...extraHeaders,
         },
         ca: pclnCa,
       },
@@ -100,7 +101,7 @@ function post(url, body) {
 }
 
 // --- HTTP POST helper (for plain HTTP internal services like FlyMetaInfo) ---
-function postHttp(url, body) {
+function postHttp(url, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url)
     const data = JSON.stringify(body)
@@ -114,6 +115,7 @@ function postHttp(url, body) {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Content-Length': Buffer.byteLength(data),
+          ...extraHeaders,
         },
       },
       (res) => {
@@ -769,7 +771,7 @@ function attachCar(pkg, car) {
   }
 }
 
-app.post(['/api/packages', '/cdns-pkg-ui/api/packages'], express.json(), async (req, res) => {
+app.post(['/api/packages', '/pkg-itinerary-mvp/api/packages'], express.json(), async (req, res) => {
   log('info', 'Packages request', req.body)
   const result = await fetchPackages(req.body || {}).catch((err) => {
     log('error', 'fetchPackages threw', { error: err.message })
@@ -841,7 +843,7 @@ async function fetchFlightOptions(params) {
   }
 }
 
-app.post(['/api/flights', '/cdns-pkg-ui/api/flights'], express.json(), async (req, res) => {
+app.post(['/api/flights', '/pkg-itinerary-mvp/api/flights'], express.json(), async (req, res) => {
   log('info', 'Flights request', req.body)
   const result = await fetchFlightOptions(req.body || {}).catch(err => ({ error: err.message }))
   if (result.error) return res.status(502).json({ error: result.error })
@@ -849,7 +851,7 @@ app.post(['/api/flights', '/cdns-pkg-ui/api/flights'], express.json(), async (re
 })
 
 // Debug: raw fly-pivot unified-search response
-app.post(['/debug/raw-flights', '/cdns-pkg-ui/debug/raw-flights'], express.json(), async (req, res) => {
+app.post(['/debug/raw-flights', '/pkg-itinerary-mvp/debug/raw-flights'], express.json(), async (req, res) => {
   try {
     const params = {
       originAirport: 'EWR', originMetroCode: 'NYC',
@@ -883,7 +885,7 @@ app.post(['/debug/raw-flights', '/cdns-pkg-ui/debug/raw-flights'], express.json(
 })
 
 // Debug: full raw unified-search response
-app.post(['/debug/raw', '/cdns-pkg-ui/debug/raw'], express.json(), async (req, res) => {
+app.post(['/debug/raw', '/pkg-itinerary-mvp/debug/raw'], express.json(), async (req, res) => {
   try {
     const params = {
       originAirport: 'EWR', originMetroCode: 'NYC',
@@ -1005,7 +1007,7 @@ async function fetchRentalCars({ pickupLocation, returnLocation, pickupDateTime,
   return { rentalCars: normalizeRentalCars(json, search), meta: search }
 }
 
-app.post(['/api/rental-cars', '/cdns-pkg-ui/api/rental-cars'], express.json(), async (req, res) => {
+app.post(['/api/rental-cars', '/pkg-itinerary-mvp/api/rental-cars'], express.json(), async (req, res) => {
   log('info', 'Rental cars request', req.body)
   const result = await fetchRentalCars(req.body || {}).catch((err) => {
     log('error', 'fetchRentalCars threw', { error: err.message })
@@ -1015,7 +1017,7 @@ app.post(['/api/rental-cars', '/cdns-pkg-ui/api/rental-cars'], express.json(), a
   res.json(result)
 })
 
-app.get(['/debug/rental-cars', '/cdns-pkg-ui/debug/rental-cars'], async (req, res) => {
+app.get(['/debug/rental-cars', '/pkg-itinerary-mvp/debug/rental-cars'], async (req, res) => {
   try {
     const result = await fetchRentalCars({
       pickupLocation: req.query.pickup ?? 'JFK',
@@ -1028,6 +1030,435 @@ app.get(['/debug/rental-cars', '/cdns-pkg-ui/debug/rental-cars'], async (req, re
     res.status(500).json({ error: err.message })
   }
 })
+
+// =============================================================================
+// AI Itinerary Generation
+// =============================================================================
+
+// --- postExternal: like post() but uses Node default TLS (no pclnCa) ---
+function postExternal(url, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const data = JSON.stringify(body)
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        port: parsed.port || 443,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Content-Length': Buffer.byteLength(data),
+          ...headers,
+        },
+        // No `ca:` — intentionally uses Node's built-in trust store for public endpoints
+      },
+      (res) => {
+        let raw = ''
+        res.on('data', (chunk) => { raw += chunk })
+        res.on('end', () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            text: () => Promise.resolve(raw),
+            json: () => Promise.resolve(JSON.parse(raw)),
+          })
+        })
+      },
+    )
+    req.on('error', reject)
+    req.write(data)
+    req.end()
+  })
+}
+
+// --- getExternal: like get() but uses Node default TLS (no pclnCa) ---
+function getExternal(url) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        port: parsed.port || 443,
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        // No `ca:` — intentionally uses Node's built-in trust store for public endpoints
+      },
+      (res) => {
+        let raw = ''
+        res.on('data', (chunk) => { raw += chunk })
+        res.on('end', () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            text: () => Promise.resolve(raw),
+            json: () => Promise.resolve(JSON.parse(raw)),
+          })
+        })
+      },
+    )
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+// --- In-memory itinerary cache (24 h TTL — content is destination-scoped) ---
+const ITINERARY_TTL_MS = 24 * 60 * 60 * 1000
+const itineraryCache = new Map()
+
+function buildItineraryCacheKey({ destinationCityId, nights, hotelName, allInclusive, departDate }) {
+  const norm = hotelName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const month = departDate.slice(0, 7) // "2026-08" — same season regardless of exact date
+  return `${destinationCityId}|${nights}|${norm}|${allInclusive}|${month}`
+}
+
+// --- Prompt builder ---
+// Asks GPT for the free middle days only: days 2 through `nights` (i.e. nights-1 free days).
+// Day 1 (arrival) and Day nights+1 (departure) are fixed and handled by the frontend.
+function buildItineraryPrompt({ destinationCity, hotelName, nights, allInclusive, departDate }) {
+  const month = new Date(`${departDate}T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })
+  const freeDays = nights - 1 // days 2 through nights
+  const inclusiveNote = allInclusive
+    ? 'The hotel is all-inclusive, so meals at the hotel require no travel.'
+    : 'The hotel is not all-inclusive; feel free to recommend local dining.'
+
+  const systemPrompt = `You are a travel itinerary expert. Respond ONLY with a valid JSON object — no prose, no markdown, no code fences.
+
+Schema:
+{
+  "days": [
+    {
+      "day": <number>,
+      "tabLabel": <string, 3-5 words>,
+      "title": <string, concise day headline>,
+      "description": <string, 1-2 sentences overview, max 500 chars>,
+      "items": [
+        {
+          "time": <string, e.g. "9:00 AM">,
+          "category": <string, one of: activity|dining|transport|leisure>,
+          "title": <string>,
+          "description": <string, max 500 chars>
+        }
+      ]
+    }
+  ]
+}
+
+Rules (violations cause rejection):
+- Generate exactly ${freeDays} day objects, numbered ${2} through ${nights}.
+- Every field listed in the schema must be present and non-empty.
+- Do NOT include any prices, costs, fees, rates, dollar amounts, or currency symbols anywhere.
+- Do NOT include booking URLs, affiliate links, or commercial recommendations.
+- Do NOT wrap the JSON in markdown or add any text outside the JSON object.`
+
+  const userPrompt = `Destination: ${destinationCity}
+Hotel: ${hotelName}
+Trip month: ${month}
+${inclusiveNote}
+
+Create a day-by-day itinerary for the ${freeDays} free middle days of this trip (day 2 through day ${nights}).`
+
+  return { systemPrompt, userPrompt }
+}
+
+// --- OpenAI / LiteLLM caller ---
+// Set OPENAI_BASE_URL in .env to point at a LiteLLM proxy (e.g. http://localhost:4000).
+// Defaults to https://api.openai.com for direct OpenAI usage.
+async function callOpenAI(systemPrompt, userPrompt) {
+  const key = process.env.OPENAI_API_KEY
+  if (!key || key.startsWith('sk-...')) throw new Error('OPENAI_API_KEY not set or is still a placeholder')
+
+  const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/$/, '')
+  const endpoint = `${baseUrl}/v1/chat/completions`
+  const isHttp = endpoint.startsWith('http://')
+
+  const model = process.env.OPENAI_MODEL || 'gpt-4o'
+  // response_format is OpenAI-specific; Claude models (via LiteLLM) use system-prompt JSON
+  // instructions only. Only send it for non-Claude models to avoid 400 errors.
+  const isClaudeModel = /claude/i.test(model)
+  const body = {
+    model,
+    ...(isClaudeModel ? {} : { response_format: { type: 'json_object' } }),
+    temperature: 0.7,
+    max_tokens: 4096,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+  }
+
+  // Detect Priceline-internal hostnames — they need pclnCa
+  const isPclnInternal = /\.pcln\.com$/.test(new URL(endpoint).hostname)
+
+  // Route through the right transport:
+  //   http://  → postHttp  (plain HTTP, e.g. localhost LiteLLM)
+  //   https:// + pcln.com → post()  (internal CA required)
+  //   https:// + public   → postExternal() (Node default trust store)
+  let resp
+  if (isHttp) {
+    resp = await postHttp(endpoint, body, { Authorization: `Bearer ${key}` })
+  } else if (isPclnInternal) {
+    resp = await post(endpoint, body, { Authorization: `Bearer ${key}` })
+  } else {
+    resp = await postExternal(endpoint, body, { Authorization: `Bearer ${key}` })
+  }
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0, 300)}`)
+  }
+
+  const data = await resp.json()
+  const content = data?.choices?.[0]?.message?.content
+  if (!content) throw new Error('LLM returned empty content')
+  return JSON.parse(content)
+}
+
+// --- Response validator / sanitizer ---
+class ValidationError extends Error {}
+
+// Strip price-related KEYS (e.g. "price", "totalCost") but NOT whole values —
+// a description like "first-rate reef" or "hotel rates vary" should survive.
+// We only blank a value when it looks like a standalone price token (digit + currency).
+const PRICE_KEY_PATTERN = /^(price|cost|fee|rate|amount|total|charge|currency)/i
+const PRICE_VALUE_PATTERN = /(\$\d|\d+\s*(USD|EUR|GBP|MXN)|free of charge)/i
+
+function sanitizeString(str, maxLen = 500) {
+  if (typeof str !== 'string') return str
+  if (PRICE_VALUE_PATTERN.test(str)) return ''
+  return str.slice(0, maxLen)
+}
+
+function sanitizeObject(obj) {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return obj
+  const out = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (PRICE_KEY_PATTERN.test(k)) continue // strip price-related keys
+    out[k] = typeof v === 'string' ? sanitizeString(v) : v
+  }
+  return out
+}
+
+function validateItineraryResponse(parsed) {
+  if (!parsed || !Array.isArray(parsed.days)) {
+    throw new ValidationError('Response missing "days" array')
+  }
+
+  const days = parsed.days.map((d, di) => {
+    if (typeof d.day !== 'number') throw new ValidationError(`days[${di}].day is not a number`)
+    if (typeof d.title !== 'string' || !d.title.trim()) throw new ValidationError(`days[${di}].title missing`)
+    if (typeof d.tabLabel !== 'string' || !d.tabLabel.trim()) throw new ValidationError(`days[${di}].tabLabel missing`)
+    if (typeof d.description !== 'string' || !d.description.trim()) throw new ValidationError(`days[${di}].description missing`)
+    if (!Array.isArray(d.items)) throw new ValidationError(`days[${di}].items is not an array`)
+
+    const items = d.items.map((item, ii) => {
+      for (const field of ['time', 'category', 'title', 'description']) {
+        if (typeof item[field] !== 'string' || !item[field].trim()) {
+          throw new ValidationError(`days[${di}].items[${ii}].${field} missing`)
+        }
+      }
+      const clean = sanitizeObject(item)
+      clean.description = sanitizeString(clean.description, 500)
+      return clean
+    })
+
+    return {
+      day: d.day,
+      tabLabel: sanitizeString(d.tabLabel, 50),
+      title: sanitizeString(d.title, 100),
+      description: sanitizeString(d.description, 500),
+      items,
+    }
+  })
+
+  return { days }
+}
+
+// --- Route ---
+app.post(
+  ['/api/itinerary', '/pkg-itinerary-mvp/api/itinerary'],
+  express.json(),
+  async (req, res) => {
+    const { destinationCityId, destinationCity, hotelName, nights, allInclusive, departDate } = req.body ?? {}
+
+    // Basic input validation
+    if (!destinationCity || !hotelName || !nights || !departDate) {
+      return res.status(400).json({ error: 'missing_fields', days: [] })
+    }
+
+    const cacheKey = buildItineraryCacheKey({ destinationCityId: destinationCityId ?? '', nights, hotelName, allInclusive: !!allInclusive, departDate })
+    const cached = itineraryCache.get(cacheKey)
+    if (cached && Date.now() < cached.expiresAt) {
+      log('info', 'itinerary cache hit', { cacheKey })
+      return res.json({ days: cached.days, cached: true })
+    }
+
+    log('info', 'itinerary cache miss — calling OpenAI', { destinationCity, hotelName, nights })
+    const start = Date.now()
+
+    try {
+      const { systemPrompt, userPrompt } = buildItineraryPrompt({ destinationCity, hotelName, nights, allInclusive: !!allInclusive, departDate })
+      const raw = await callOpenAI(systemPrompt, userPrompt)
+      const validated = validateItineraryResponse(raw)
+
+      itineraryCache.set(cacheKey, { days: validated.days, expiresAt: Date.now() + ITINERARY_TTL_MS })
+      log('info', 'itinerary generated', { durationMs: Date.now() - start, days: validated.days.length })
+
+      return res.json({ days: validated.days, cached: false })
+    } catch (err) {
+      log('error', 'itinerary generation failed', { error: err.message })
+      return res.json({ error: 'generation_failed', days: [] })
+    }
+  },
+)
+
+// =============================================================================
+// Activity images — Google Places (key stays server-side)
+// =============================================================================
+
+const ACTIVITY_IMAGE_TTL_MS = 24 * 60 * 60 * 1000
+const activityImageCache = new Map()
+
+function buildActivityImageCacheKey(name, destination) {
+  const norm = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const dest = destination.toLowerCase().trim()
+  return `${dest}|${norm}`
+}
+
+// Places Photo redirects (302) to a googleusercontent URL. Follow it here so
+// the API key never appears in a Location header sent to the browser.
+const PLACES_PHOTO_HOST = /^(maps\.googleapis\.com|(?:[a-z0-9-]+\.)?googleusercontent\.com|(?:[a-z0-9-]+\.)?googleapis\.com)$/
+
+function pipePlacesPhoto(url, res, redirectsLeft = 3) {
+  let parsed
+  try {
+    parsed = new URL(url)
+  } catch {
+    if (!res.headersSent) res.status(400).end()
+    return
+  }
+  if (parsed.protocol !== 'https:' || !PLACES_PHOTO_HOST.test(parsed.hostname)) {
+    if (!res.headersSent) res.status(502).end()
+    return
+  }
+
+  const req = https.get(url, { rejectUnauthorized: true }, (upstream) => {
+    const status = upstream.statusCode ?? 502
+    const location = upstream.headers.location
+    if (status >= 300 && status < 400 && location && redirectsLeft > 0) {
+      upstream.resume()
+      let next
+      try {
+        next = new URL(location, url)
+      } catch {
+        if (!res.headersSent) res.status(502).end()
+        return
+      }
+      pipePlacesPhoto(next.toString(), res, redirectsLeft - 1)
+      return
+    }
+    res.status(status)
+    const ct = upstream.headers['content-type']
+    if (ct) res.setHeader('Content-Type', ct)
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    upstream.pipe(res)
+  })
+  req.on('error', () => {
+    if (!res.headersSent) res.status(502).end()
+  })
+  req.setTimeout(8000, () => {
+    req.destroy()
+    if (!res.headersSent) res.status(502).end()
+  })
+}
+
+async function fetchPlacesImage(name, destination) {
+  const key = process.env.GOOGLE_PLACES_API_KEY
+  if (!key) return null
+
+  // Places API (New). The legacy Text Search endpoint is not enabled for this key.
+  const resp = await postExternal(
+    'https://places.googleapis.com/v1/places:searchText',
+    { textQuery: `${name} ${destination}` },
+    {
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': 'places.displayName,places.id,places.photos,places.googleMapsUri',
+    },
+  )
+  if (!resp.ok) {
+    log('warn', 'places text search non-ok', { status: resp.status })
+    throw new Error(`places text search failed: ${resp.status}`)
+  }
+
+  const data = await resp.json()
+  const result = data?.places?.[0]
+  const photoName = result?.photos?.[0]?.name
+  if (!photoName) return null
+
+  // Confidence check — at least 1 query word must appear in the returned place name
+  const queryWords = name.toLowerCase().split(/\s+/)
+  const resultName = (result.displayName?.text ?? '').toLowerCase()
+  const hasMatch = queryWords.some(w => w.length > 3 && resultName.includes(w))
+  if (!hasMatch) return null
+
+  const mapsUrl = typeof result.googleMapsUri === 'string' && !result.googleMapsUri.includes('key=')
+    ? result.googleMapsUri
+    : `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(result.id)}`
+
+  return {
+    photoReference: photoName,
+    placeName: result.displayName?.text ?? '',
+    placeId: result.id,
+    googleMapsUrl: mapsUrl,
+  }
+}
+
+const PLACES_PHOTO_NAME = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/
+
+app.get(['/api/places-photo', '/pkg-itinerary-mvp/api/places-photo'], (req, res) => {
+  const ref = typeof req.query.ref === 'string' ? req.query.ref : ''
+  const key = process.env.GOOGLE_PLACES_API_KEY
+  if (!PLACES_PHOTO_NAME.test(ref) || !key) return res.status(400).end()
+
+  const url = `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=600&key=${encodeURIComponent(key)}`
+  pipePlacesPhoto(url, res)
+})
+
+app.get(
+  ['/api/activity-image', '/pkg-itinerary-mvp/api/activity-image'],
+  async (req, res) => {
+    const name = typeof req.query.name === 'string' ? req.query.name.trim() : ''
+    const destination = typeof req.query.destination === 'string' ? req.query.destination.trim() : ''
+    if (!name || !destination) return res.status(400).json({ error: 'missing_fields' })
+
+    const cacheKey = buildActivityImageCacheKey(name, destination)
+    const cached = activityImageCache.get(cacheKey)
+    if (cached && Date.now() < cached.expiresAt) {
+      return res.json({ ...cached.data, cached: true })
+    }
+
+    try {
+      const result = await fetchPlacesImage(name, destination)
+      const data = result
+        ? {
+            imageUrl: `/api/places-photo?ref=${encodeURIComponent(result.photoReference)}`,
+            attribution: {
+              placeName: result.placeName,
+              googleMapsUrl: result.googleMapsUrl,
+            },
+          }
+        : { imageUrl: null, attribution: null } // Phase 5 falls back to hotel hero image
+
+      activityImageCache.set(cacheKey, { data, expiresAt: Date.now() + ACTIVITY_IMAGE_TTL_MS })
+      return res.json({ ...data, cached: false })
+    } catch (err) {
+      log('error', 'activity-image failed', { error: err.message })
+      return res.json({ imageUrl: null, attribution: null, cached: false })
+    }
+  },
+)
 
 // Global header — fetches real Priceline header/footer HTML from global-navigation-service
 const GLOBAL_WEB_COMPONENTS_URL = process.env.GLOBAL_WEB_COMPONENTS_URL ||
@@ -1082,7 +1513,7 @@ async function fetchGlobalHeader() {
 
   try {
     const data = await httpsPost(
-      `${navUrl}?client-app-name=cdns-pkg-ui&client-app-version=1.0`,
+      `${navUrl}?client-app-name=pkg-itinerary-mvp&client-app-version=1.0`,
       { featureOptions: { lightHeader: true }, cguid: null, visitId: null, multiCurrency: { mcType: 'NONE' }, route: '/' },
       pclnCa,
     )
@@ -1098,7 +1529,7 @@ async function fetchGlobalHeader() {
   return _headerCache
 }
 
-app.get(['/api/header', '/cdns-pkg-ui/api/header'], async (req, res) => {
+app.get(['/api/header', '/pkg-itinerary-mvp/api/header'], async (req, res) => {
   const data = await fetchGlobalHeader()
   res.json(data)
 })
@@ -1124,10 +1555,10 @@ app.get('/global-web-components/*', (req, res) => {
 
 if (process.env.NODE_ENV === 'production') {
   const publicDir = join(__dirname, 'public')
-  // Serve frontend assets under the /cdns-pkg-ui/ path prefix Vite bakes into asset URLs
-  app.use('/cdns-pkg-ui', express.static(publicDir))
+  // Serve frontend assets under the /pkg-itinerary-mvp/ path prefix Vite bakes into asset URLs
+  app.use('/pkg-itinerary-mvp', express.static(publicDir))
   // SPA catch-all — any unmatched route under the app prefix returns index.html
-  app.get(['/cdns-pkg-ui', '/cdns-pkg-ui/*'], (_req, res) =>
+  app.get(['/pkg-itinerary-mvp', '/pkg-itinerary-mvp/*'], (_req, res) =>
     res.sendFile(join(publicDir, 'index.html'))
   )
 }

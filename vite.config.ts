@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react-swc'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  base: process.env.VITE_BASE_PATH || '/cdns-pkg-ui/',
+  base: process.env.VITE_BASE_PATH || '/pkg-itinerary-mvp/',
   build: { outDir: 'dist/public' },
   plugins: [tailwindcss(), react()],
   server: {
@@ -17,25 +17,25 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      '/cdns-pkg-ui/api': {
+      '/pkg-itinerary-mvp/api': {
         target: 'http://localhost:3001',
         changeOrigin: false,
-        rewrite: (path) => path.replace(/^\/cdns-pkg-ui/, ''),
+        rewrite: (path) => path.replace(/^\/pkg-itinerary-mvp/, ''),
       },
-      '/cdns-pkg-ui/debug/raw': {
+      '/pkg-itinerary-mvp/debug/raw': {
         target: 'http://localhost:3001',
         changeOrigin: false,
-        rewrite: (path) => path.replace(/^\/cdns-pkg-ui/, ''),
+        rewrite: (path) => path.replace(/^\/pkg-itinerary-mvp/, ''),
       },
-      '/cdns-pkg-ui/debug/raw-flights': {
+      '/pkg-itinerary-mvp/debug/raw-flights': {
         target: 'http://localhost:3001',
         changeOrigin: false,
-        rewrite: (path) => path.replace(/^\/cdns-pkg-ui/, ''),
+        rewrite: (path) => path.replace(/^\/pkg-itinerary-mvp/, ''),
       },
-      '/cdns-pkg-ui/api/flights': {
+      '/pkg-itinerary-mvp/api/flights': {
         target: 'http://localhost:3001',
         changeOrigin: false,
-        rewrite: (path) => path.replace(/^\/cdns-pkg-ui/, ''),
+        rewrite: (path) => path.replace(/^\/pkg-itinerary-mvp/, ''),
       },
     },
   },

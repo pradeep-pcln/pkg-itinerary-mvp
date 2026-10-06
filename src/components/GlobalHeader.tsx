@@ -13,7 +13,7 @@ let _scriptsInjected = false
 function loadHeader(): Promise<HeaderData> {
   if (_cache) return Promise.resolve(_cache)
   if (_promise) return _promise
-  _promise = fetch('/cdns-pkg-ui/api/header')
+  _promise = fetch('/pkg-itinerary-mvp/api/header')
     .then(r => r.json())
     .then(data => { _cache = data; return data })
     .catch(() => ({ headerHTML: '', footerHTML: '', installerHTML: '' }))

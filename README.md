@@ -184,16 +184,16 @@ For Priceline data (flights, hotels, car rentals, trip history, user info), Clau
 
 ---
 
-## cdns-pkg-ui — Package Search Prototype
+## pkg-itinerary-mvp — Package Search Prototype
 
-Branch: `vibe/cdns-pkg-ui`
+Branch: `vibe/pkg-itinerary-mvp`
 
 Displays hotel + flight vacation packages sourced from the USP (Unified Search Platform) via a Node/Express API and a Vite/React frontend.
 
 ### Architecture
 
 ```
-https://local.priceline.com/cdns-pkg-ui/
+https://local.priceline.com/pkg-itinerary-mvp/
         │
         ▼ pcln nginx (Docker)
   Vite dev server  :5173   ← SPA + assets + proxies /api/* → Express
@@ -224,7 +224,7 @@ https://local.priceline.com/cdns-pkg-ui/
 
 ```bash
 # 1. Clone and switch to the branch
-git checkout vibe/cdns-pkg-ui
+git checkout vibe/pkg-itinerary-mvp
 
 # 2. Install dependencies (GART auth must be active first)
 npm install
@@ -240,7 +240,7 @@ pcln start
 npm start
 ```
 
-App is now live at **https://local.priceline.com/cdns-pkg-ui/**
+App is now live at **https://local.priceline.com/pkg-itinerary-mvp/**
 
 ### Environment Variables
 
