@@ -6,8 +6,8 @@ const SEARCH_PARAMS = {
   originMetroCode: 'NYC',
   destinationAirport: 'CUN',
   destinationCityId: '3000061781',
-  departDate: '2026-10-15',
-  returnDate: '2026-10-22',
+  departDate: '2026-11-15',
+  returnDate: '2026-11-19',
   travelers: 2,
 }
 

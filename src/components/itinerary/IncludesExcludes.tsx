@@ -17,13 +17,13 @@ export function IncludesExcludes({ pkg }: { pkg: NormalizedPackage }) {
         </ul>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-dashed border-primary-6 bg-neutral-1 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-error-5 bg-error-2 p-4">
         <Heading as="h3" textStyle="heading5" palette="primary" shade="13">Package Excludes</Heading>
         <ul className="flex flex-col gap-2">
           {packageExcludes(pkg).map((item) => (
             <li key={item} className="flex items-start gap-2">
-              <CdnIcon iconName="remove_circle" size="20" palette="neutral" shade="7" />
-              <Span textStyle="body2" palette="primary" shade="10">{item}</Span>
+              <CdnIcon iconName="cancel" size="20" palette="error" shade="8" />
+              <Span textStyle="body2" palette="primary" shade="13">{item}</Span>
             </li>
           ))}
         </ul>

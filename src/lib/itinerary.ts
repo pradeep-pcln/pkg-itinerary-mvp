@@ -187,7 +187,17 @@ export function flightCards(pkg: NormalizedPackage): FlightCard[] {
   })
 }
 
-export type ItineraryItemKind = 'flight' | 'car' | 'hotel' | 'meal'
+export type ItineraryItemKind = 'flight' | 'car' | 'hotel' | 'meal' | 'activity'
+
+export interface ActivityAttribution {
+  placeName: string
+  googleMapsUrl: string
+}
+
+export interface ActivityImageResult {
+  imageUrl: string | null
+  attribution: ActivityAttribution | null
+}
 
 export interface ItineraryItem {
   kind: ItineraryItemKind
@@ -197,6 +207,9 @@ export interface ItineraryItem {
   description: string
   location?: string
   categoryLabel: string
+  isAiSuggested?: boolean
+  imageUrl?: string | null
+  attribution?: ActivityAttribution | null
 }
 
 export interface ItineraryDay {
@@ -337,6 +350,72 @@ export function buildItineraryDays(pkg: NormalizedPackage): ItineraryDay[] {
       return { day, date, tabLabel: 'Departure', title: 'Check out · fly home', description: departureDescription(pkg), items: departureItems, isFreeDay: false }
     }
     return { day, date, tabLabel: 'Free day', title: `Free day in ${city}`, description: freeDayDescription(pkg), items: mealItem(pkg), isFreeDay: true }
+  })
+}
+
+// Shape returned by POST /api/itinerary. `category` is activity | dining | transport | leisure.
+export interface AiItem {
+  time: string
+  category: string
+  title: string
+  description: string
+}
+
+export interface AiDay {
+  day: number
+  tabLabel: string
+  title: string
+  description: string
+  items: AiItem[]
+}
+
+const AI_KIND: Record<string, ItineraryItemKind> = {
+  activity: 'activity',
+  dining: 'meal',
+  transport: 'car',
+  leisure: 'activity',
+}
+
+const AI_LABEL: Record<string, string> = {
+  activity: 'Activity',
+  dining: 'Dining',
+  transport: 'Transportation',
+  leisure: 'Leisure',
+}
+
+function aiItemToItineraryItem(item: AiItem, images: ReadonlyMap<string, ActivityImageResult>): ItineraryItem {
+  const image = images.get(item.title)
+  return {
+    kind: AI_KIND[item.category] ?? 'activity',
+    time: item.time,
+    title: item.title,
+    description: item.description,
+    categoryLabel: AI_LABEL[item.category] ?? 'Activity',
+    isAiSuggested: true,
+    imageUrl: image?.imageUrl ?? null,
+    attribution: image?.attribution ?? null,
+  }
+}
+
+// Replaces free-day placeholders with AI suggestions. Arrival and departure days stay as booked.
+export function mergeAiDays(
+  staticDays: ItineraryDay[],
+  aiDays: AiDay[],
+  activityImages: ReadonlyMap<string, ActivityImageResult>,
+): ItineraryDay[] {
+  const aiByDay = new Map(aiDays.map((day) => [day.day, day]))
+  return staticDays.map((day) => {
+    if (!day.isFreeDay) return day
+    const ai = aiByDay.get(day.day)
+    if (!ai) return day
+    return {
+      ...day,
+      tabLabel: ai.tabLabel,
+      title: ai.title,
+      description: ai.description,
+      isFreeDay: false,
+      items: ai.items.map((item) => aiItemToItineraryItem(item, activityImages)),
+    }
   })
 }
 

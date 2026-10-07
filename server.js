@@ -20,11 +20,11 @@ const PORT = process.env.PORT || 3001
 
 const pclnCa = readFileSync(join(__dirname, 'certs', 'pcln-internal-ca.pem'))
 
-const QAA_HOST = 'guse4-uspmidtiergw-qaa.dqs.pcln.com:443'
-const UNIFIED_SEARCH_URL = 'https://guse4-uspmidtiergw-qaa.dqs.pcln.com/bundle/v1/unified-search'
-const HTL_CONTENT_URL = 'https://guse4-htlmidtiergw-qaa.dqs.pcln.com/htl-content/content/with-deal-ids?responseOptions=ALL_AMENITIES,HOTEL_IMAGES,UHD_IMAGES&appid=RELAX&appc=MOBILEWEB&format=json'
-const FLY_METAINFO_URL = 'http://guse4-flymidtiergw-qaa.dqs.pcln.com/flymetainfo/api/v1/metainfo/'
-const RC_AVAILABILITY_BASE_URL = 'https://guse4-rcmidtiergw-qaa.dqs.pcln.com/rc/api/v0/availability'
+const QAA_HOST = 'guse4-uspmidtiergw-prod.prod.pcln.com:443'
+const UNIFIED_SEARCH_URL = 'https://guse4-uspmidtiergw-prod.prod.pcln.com/bundle/v1/unified-search'
+const HTL_CONTENT_URL = 'https://guse4-htlmidtiergw-prod.prod.pcln.com/htl-content/content/with-deal-ids?responseOptions=ALL_AMENITIES,HOTEL_IMAGES,UHD_IMAGES&appid=RELAX&appc=MOBILEWEB&format=json'
+const FLY_METAINFO_URL = 'http://guse4-flymidtiergw-prod.prod.pcln.com/flymetainfo/api/v1/metainfo/'
+const RC_AVAILABILITY_BASE_URL = 'https://guse4-rcmidtiergw-prod.prod.pcln.com/rc/api/v0/availability'
 function airlineLogoUrl(iataCode) {
   return `https://s1.pclncdn.com/design-assets/fly/carrier-logos/airLogo_${iataCode}.png`
 }

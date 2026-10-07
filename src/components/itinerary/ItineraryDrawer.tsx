@@ -1,6 +1,8 @@
 import { A, Drawer, Heading, Price, Span } from '@pcln/horizon'
+import { useActivityImages } from '../../hooks/useActivityImages'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
-import { bookUrl, formatAmount, travelersLabel, tripMeta, tripTitle } from '../../lib/itinerary'
+import { useItinerary } from '../../hooks/useItinerary'
+import { bookUrl, cityName, formatAmount, travelersLabel, tripMeta, tripTitle } from '../../lib/itinerary'
 import type { NormalizedPackage } from '../../types'
 import { DayTabs } from './DayTabs'
 import { DrawerHero } from './DrawerHero'
@@ -51,9 +53,11 @@ interface ItineraryDrawerProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function ItineraryDrawer({ pkg, open, onOpenChange }: ItineraryDrawerProps) {
+export function ItineraryDrawer({ pkg, open, onOpenChange }: Readonly<ItineraryDrawerProps>) {
   const isDesktop = useIsDesktop()
   const title = tripTitle(pkg)
+  const { aiDays, loading: aiLoading } = useItinerary(open ? pkg : null)
+  const activityImages = useActivityImages(aiDays, cityName(pkg.destination))
 
   return (
     <Drawer
@@ -74,7 +78,13 @@ export function ItineraryDrawer({ pkg, open, onOpenChange }: ItineraryDrawerProp
           <DrawerHero pkg={pkg} />
         </div>
         <div className="px-4 pb-8 lg:px-6">
-          <DayTabs key={pkg.proposalIndex} pkg={pkg} />
+          <DayTabs
+            key={pkg.proposalIndex}
+            pkg={pkg}
+            aiDays={aiDays}
+            aiLoading={aiLoading}
+            activityImages={activityImages}
+          />
         </div>
         <div className="flex flex-col gap-8 bg-neutral-2 px-4 py-8 lg:px-6">
           <HotelSection pkg={pkg} />
