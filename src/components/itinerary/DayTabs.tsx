@@ -90,9 +90,6 @@ const PLAN_MOTION = (
       0%, 100% { opacity: 0.35; transform: scale(0.85); }
       50% { opacity: 1; transform: scale(1); }
     }
-    .day-plan-row { animation: dayPlanIn 0.45s ease both; }
-    .day-plan-row:nth-child(2) { animation-delay: 140ms; }
-    .day-plan-row:nth-child(3) { animation-delay: 280ms; }
     .day-plan-in { animation: dayPlanIn 0.4s ease both; }
     .day-plan-dot {
       width: 0.5rem;
@@ -107,8 +104,46 @@ const PLAN_MOTION = (
       50% { transform: translateY(-1px); }
     }
     .new-plan-btn { animation: newPlanGlow 2.2s ease-in-out infinite; }
+    @keyframes phr {
+      0% { opacity: 0; transform: translateY(14px); }
+      6% { opacity: 1; transform: none; }
+      28% { opacity: 1; transform: none; }
+      34% { opacity: 0; transform: translateY(-14px); }
+      100% { opacity: 0; transform: translateY(-14px); }
+    }
+    @keyframes ico {
+      0% { opacity: 0; transform: scale(.5) rotate(-20deg); }
+      6% { opacity: 1; transform: none; }
+      28% { opacity: 1; transform: none; }
+      34% { opacity: 0; transform: scale(.5) rotate(20deg); }
+      100% { opacity: 0; }
+    }
+    @keyframes tw {
+      0%, 100% { opacity: 0; transform: scale(.3); }
+      50% { opacity: 1; transform: scale(1.15); }
+    }
+    @keyframes ring {
+      0% { transform: scale(.7); opacity: .5; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+    @keyframes sweep {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .day-load-phrase { animation: phr 4.5s ease-in-out infinite; }
+    .day-load-icon { animation: ico 4.5s ease-in-out infinite; }
+    .day-load-star { animation: tw 2s ease-in-out infinite; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+    .day-load-ring { animation: ring 2.4s ease-out infinite; }
+    .day-load-core { animation: breathe 2.4s ease-in-out infinite; }
+    .day-load-sweep { animation: sweep 2.4s ease-in-out infinite; }
     @media (prefers-reduced-motion: reduce) {
-      .day-plan-row, .day-plan-in, .day-plan-dot, .new-plan-btn { animation: none; }
+      .day-plan-in, .day-plan-dot, .new-plan-btn,
+      .day-load-phrase, .day-load-icon, .day-load-star, .day-load-ring, .day-load-core, .day-load-sweep { animation: none; }
+      .day-load-phrase:first-child, .day-load-icon:first-child { opacity: 1; }
     }
   `}</style>
 )
@@ -121,30 +156,85 @@ function PlanningDot() {
   )
 }
 
-const SKELETON_ROWS = [0, 1, 2] as const
+const LOADING_BEATS = [
+  { phrase: 'Finding fresh spots', icon: 'location_on', delay: '0s' },
+  { phrase: 'Mixing new ideas', icon: 'search', delay: '-3s' },
+  { phrase: 'Shaping your day', icon: 'attractions', delay: '-1.5s' },
+] as const
 
-function FreeDaySkeleton() {
+const GLITTER = [
+  { left: '-30%', top: '5%', size: 9, delay: '0s' },
+  { left: '115%', top: '0%', size: 7, delay: '.5s' },
+  { left: '120%', top: '70%', size: 10, delay: '1s' },
+  { left: '-22%', top: '85%', size: 6, delay: '.24s' },
+  { left: '50%', top: '-35%', size: 7, delay: '.6s' },
+] as const
+
+function DayLoading() {
   return (
-    <ol className="flex flex-col" aria-busy="true" aria-label="Loading suggested activities">
-      {SKELETON_ROWS.map((row) => (
-        <li key={row} className="day-plan-row grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3">
-          <Skeleton type="body2" className="mt-1.5 ml-auto w-12" />
-          <div className="relative flex justify-center">
-            <Skeleton type="image" width="2rem" height="2rem" className="rounded-full" />
-            {row === SKELETON_ROWS.length - 1 ? null : (
-              <span aria-hidden className="absolute top-9 bottom-1 w-0.5 rounded-full bg-primary-4" />
-            )}
-          </div>
-          <div className="pb-4">
-            <div className="flex flex-col gap-2 rounded-xl border border-primary-4 p-4">
-              <Skeleton type="label" className="w-1/4" />
-              <Skeleton type="h5" className="w-2/3" />
-              <Skeleton type="body2" className="w-full" />
+    <div
+      className="relative min-h-[380px] overflow-hidden rounded-2xl bg-linear-to-b from-primary-1 to-neutral-1"
+      aria-busy="true"
+      aria-live="polite"
+      aria-label="Planning this day"
+    >
+      <div className="absolute inset-0 p-5 opacity-80">
+        {[0, 1, 2].map((row) => (
+          <div key={row} className="grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3">
+            <Skeleton type="body2" width="3rem" className="mt-1.5 ml-auto" />
+            <div className="relative flex justify-center">
+              <Skeleton type="image" width="2rem" height="2rem" className="rounded-full" />
+              {row === 2 ? null : <span aria-hidden className="absolute top-9 bottom-1 w-0.5 rounded-full bg-primary-4" />}
+            </div>
+            <div className="pb-3.5">
+              <div className="relative flex h-[104px] flex-col gap-2 overflow-hidden rounded-xl border border-primary-4 p-4">
+                <Skeleton type="label" className="w-1/4" />
+                <Skeleton type="h5" className="w-2/3" />
+                <Skeleton type="body2" className="w-full" />
+                <span
+                  aria-hidden
+                  className="day-load-sweep pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,transparent,rgba(0,104,239,0.07),transparent)]"
+                  style={{ animationDelay: `${row * 0.3}s` }}
+                />
+              </div>
             </div>
           </div>
-        </li>
-      ))}
-    </ol>
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.9)_14%,rgba(255,255,255,0.35)_55%,rgba(255,255,255,0)_100%)]" />
+      <div className="relative flex min-h-[380px] flex-col items-center justify-center gap-6 p-6 text-center">
+        <div className="relative flex size-[76px] items-center justify-center">
+          {GLITTER.map((star) => (
+            <span
+              key={`${star.left}-${star.top}`}
+              aria-hidden
+              className="day-load-star absolute bg-actionPrimary-6"
+              style={{ left: star.left, top: star.top, width: star.size, height: star.size, animationDelay: star.delay }}
+            />
+          ))}
+          <span className="day-load-ring absolute inset-0 rounded-full border-2 border-actionPrimary-8" />
+          <span className="day-load-ring absolute inset-0 rounded-full border-2 border-actionPrimary-8 [animation-delay:1.2s]" />
+          <span className="day-load-core relative flex size-14 items-center justify-center rounded-full bg-linear-to-br from-actionPrimary-6 to-actionPrimary-8 text-neutral-1 shadow-[0_6px_16px_rgba(0,104,239,0.25)]">
+            {LOADING_BEATS.map((beat) => (
+              <span key={beat.icon} className="day-load-icon absolute flex opacity-0" style={{ animationDelay: beat.delay }}>
+                <CdnIcon iconName={beat.icon} size="28" className="text-neutral-1" />
+              </span>
+            ))}
+          </span>
+        </div>
+        <div className="relative h-10 w-full">
+          {LOADING_BEATS.map((beat) => (
+            <div
+              key={beat.phrase}
+              className="day-load-phrase absolute inset-0 flex items-center justify-center text-[28px] font-bold tracking-tight text-actionPrimary-8/90 opacity-0"
+              style={{ animationDelay: beat.delay }}
+            >
+              {beat.phrase}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -184,7 +274,7 @@ function DayPanel({
                 disabled={isRewriting}
                 onClick={() => onRegenerate(day.day)}
               >
-                {isRewriting ? 'Writing…' : 'New plan'}
+                {isRewriting ? 'Planning…' : 'New plan'}
               </Button>
               <Tooltip
                 side="bottom"
@@ -202,12 +292,6 @@ function DayPanel({
             </div>
           ) : null}
         </div>
-        {isPlanning ? (
-          <Span textStyle="body1" palette="primary" shade="10">Planning your free days</Span>
-        ) : null}
-        {isRewriting ? (
-          <Span textStyle="body1" palette="primary" shade="10">The other days stay the same.</Span>
-        ) : null}
         {regenMessage && !isRewriting ? (
           <Span textStyle="body2" palette="caution" shade="10">{regenMessage}</Span>
         ) : null}
@@ -220,7 +304,7 @@ function DayPanel({
       </div>
 
       {showSkeleton ? (
-        <FreeDaySkeleton />
+        <DayLoading />
       ) : day.items.length > 0 ? (
         <ol className="day-plan-in flex flex-col">
           {day.items.map((item, i) => (
