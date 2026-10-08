@@ -1,6 +1,6 @@
 import { A, Badge, Button, CdnIcon, Disc, Heading, IconButton, Skeleton, Span, Tabs, Tooltip } from '@pcln/horizon'
 import type { DiscProps, TabsValue, ValidGoogleSymbol } from '@pcln/horizon'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { buildItineraryDays, formatLongDate, mergeAiDays } from '../../lib/itinerary'
 import type { ActivityImageResult, AiDay, ItineraryDay, ItineraryItem, ItineraryItemKind } from '../../lib/itinerary'
 import type { NormalizedPackage } from '../../types'
@@ -99,11 +99,61 @@ const PLAN_MOTION = (
       display: inline-block;
       animation: planPulse 1.2s ease-in-out infinite;
     }
-    @keyframes newPlanGlow {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-1px); }
+    @keyframes npSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+    @keyframes npFlow { from { background-position: 100% 0; } to { background-position: 0 0; } }
+    @keyframes npGrow {
+      from { max-width: 0; opacity: 0; margin-left: 0; }
+      to { max-width: 90px; opacity: 1; margin-left: 8px; }
     }
-    .new-plan-btn { animation: newPlanGlow 2.2s ease-in-out infinite; }
+    @keyframes npHalo {
+      0% { opacity: 0; transform: scale(.7); }
+      40% { opacity: .85; transform: scale(1.05); }
+      100% { opacity: .35; transform: scale(1); }
+    }
+    @keyframes npPop { 0% { transform: scale(.9); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+    @keyframes npSheen {
+      from { transform: translateX(-130%) skewX(-20deg); }
+      to { transform: translateX(420%) skewX(-20deg); }
+    }
+    @keyframes npBurst {
+      0% { opacity: 0; transform: translate(0, 0) scale(.3); }
+      30% { opacity: 1; }
+      100% { opacity: 0; transform: translate(var(--bx), var(--by)) scale(var(--bs)); }
+    }
+    .np-wrap { animation: npPop .6s ease both; }
+    .np-halo {
+      background: linear-gradient(110deg, #0068ef, #7b5cff, #22c7d6);
+      filter: blur(12px);
+      opacity: .35;
+      animation: npHalo 1.6s ease .1s both;
+    }
+    .np-pill {
+      background: linear-gradient(110deg, #0057d9, #0068ef 25%, #6a5cff 55%, #22c7d6 90%);
+      background-size: 240% 100%;
+      background-position: 0 0;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4);
+      animation: npFlow 1.6s ease both;
+    }
+    .np-turn { transition: transform .3s ease; }
+    .np-pill:not(:disabled):hover .np-turn { transform: rotate(180deg); }
+    .np-icon { animation: npSpin .9s ease .3s both; }
+    .np-label { max-width: 90px; margin-left: 8px; animation: npGrow .55s ease .15s both; }
+    .np-star {
+      clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+      opacity: 0;
+      animation: npBurst .9s ease both;
+    }
+    .np-sheen {
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .5), transparent);
+      transform: translateX(420%) skewX(-20deg);
+      animation: npSheen 1.1s ease .9s both;
+    }
+    .np-wrap.np-rest, .np-rest .np-halo, .np-rest .np-pill, .np-rest .np-icon,
+    .np-rest .np-label, .np-rest .np-star, .np-rest .np-sheen,
+    .np-wrap.np-off, .np-off .np-halo, .np-off .np-pill, .np-off .np-icon,
+    .np-off .np-label, .np-off .np-star, .np-off .np-sheen { animation: none; }
+    .np-off .np-halo, .np-off .np-star, .np-off .np-sheen { display: none; }
+    .np-off .np-pill { background: #dfe4eb; color: #7b8697; box-shadow: none; }
     @keyframes phr {
       0% { opacity: 0; transform: translateY(14px); }
       6% { opacity: 1; transform: none; }
@@ -141,7 +191,8 @@ const PLAN_MOTION = (
     .day-load-core { animation: breathe 2.4s ease-in-out infinite; }
     .day-load-sweep { animation: sweep 2.4s ease-in-out infinite; }
     @media (prefers-reduced-motion: reduce) {
-      .day-plan-in, .day-plan-dot, .new-plan-btn,
+      .day-plan-in, .day-plan-dot,
+      .np-wrap, .np-halo, .np-pill, .np-icon, .np-label, .np-star, .np-sheen,
       .day-load-phrase, .day-load-icon, .day-load-star, .day-load-ring, .day-load-core, .day-load-sweep { animation: none; }
       .day-load-phrase:first-child, .day-load-icon:first-child { opacity: 1; }
     }
@@ -152,6 +203,59 @@ function PlanningDot() {
   return (
     <span aria-hidden className="mr-2 flex size-2 shrink-0 text-actionPrimary-8">
       <span className="day-plan-dot" />
+    </span>
+  )
+}
+
+const NEW_PLAN_STARS = [
+  { bx: '-18px', by: '-16px', bs: 1 },
+  { bx: '16px', by: '-20px', bs: 1 },
+  { bx: '22px', by: '10px', bs: 0.8 },
+  { bx: '-20px', by: '14px', bs: 0.8 },
+] as const
+
+// Each day tab remounts this button, so the shared ref limits the entrance to
+// the first one shown while the itinerary is open.
+function NewPlanButton({ busy, disabled, introPlayed, onClick }: Readonly<{
+  busy: boolean
+  disabled: boolean
+  introPlayed: RefObject<boolean>
+  onClick: () => void
+}>) {
+  const [animate, setAnimate] = useState(() => !introPlayed.current)
+  // Once greyed out, coming back must not replay the entrance
+  if (disabled && animate) setAnimate(false)
+  useEffect(() => {
+    introPlayed.current = true
+  }, [introPlayed])
+
+  const state = disabled ? ' np-off' : animate ? '' : ' np-rest'
+  return (
+    <span className={`np-wrap relative inline-flex${state}`}>
+      <span aria-hidden className="np-halo absolute -inset-x-1.5 -inset-y-[3px] rounded-full" />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        className="np-pill relative inline-flex cursor-pointer items-center overflow-hidden rounded-full px-4 py-2.5 text-[14px] leading-none font-bold text-neutral-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-actionPrimary-8 disabled:cursor-default"
+      >
+        <span aria-hidden className="relative flex">
+          <span className="np-turn flex">
+            <span className="np-icon flex">
+              <CdnIcon iconName="refresh" size="18" />
+            </span>
+          </span>
+          {NEW_PLAN_STARS.map((star, i) => (
+            <span
+              key={`${star.bx}${star.by}`}
+              className="np-star absolute top-[5px] left-[5px] size-[9px] bg-neutral-1"
+              style={{ animationDelay: `${0.55 + i * 0.08}s`, '--bx': star.bx, '--by': star.by, '--bs': star.bs } as CSSProperties}
+            />
+          ))}
+        </span>
+        <span className="np-label overflow-hidden whitespace-nowrap">{busy ? 'Planning…' : 'New plan'}</span>
+        <span aria-hidden className="np-sheen pointer-events-none absolute inset-y-0 left-0 w-1/4" />
+      </button>
     </span>
   )
 }
@@ -208,7 +312,7 @@ function DayLoading() {
             <span
               key={`${star.left}-${star.top}`}
               aria-hidden
-              className="day-load-star absolute bg-actionPrimary-6"
+              className="day-load-star absolute bg-actionPrimary-8"
               style={{ left: star.left, top: star.top, width: star.size, height: star.size, animationDelay: star.delay }}
             />
           ))}
@@ -226,7 +330,7 @@ function DayLoading() {
           {LOADING_BEATS.map((beat) => (
             <div
               key={beat.phrase}
-              className="day-load-phrase absolute inset-0 flex items-center justify-center text-[28px] font-bold tracking-tight text-actionPrimary-8/90 opacity-0"
+              className="day-load-phrase absolute inset-0 flex items-center justify-center text-[28px] font-bold tracking-tight text-actionPrimary-8/75 opacity-0"
               style={{ animationDelay: beat.delay }}
             >
               {beat.phrase}
@@ -244,13 +348,15 @@ interface DayPanelProps {
   isLast: boolean
   aiLoading: boolean
   isRewriting: boolean
+  anyRewriting: boolean
   regenMessage: string | null
   onRegenerate: (day: number) => void
   onStep: (delta: number) => void
+  newPlanIntroPlayed: RefObject<boolean>
 }
 
 function DayPanel({
-  day, isFirst, isLast, aiLoading, isRewriting, regenMessage, onRegenerate, onStep,
+  day, isFirst, isLast, aiLoading, isRewriting, anyRewriting, regenMessage, onRegenerate, onStep, newPlanIntroPlayed,
 }: Readonly<DayPanelProps>) {
   const hasSuggestions = day.items.some((item) => item.isAiSuggested)
   const isPlanning = day.isFreeDay && aiLoading
@@ -265,17 +371,13 @@ function DayPanel({
           </Span>
           {showNewPlan ? (
             <div className="flex items-center gap-1.5">
-              <Button
-                type="radialPrimary"
-                size="sm"
-                buttonType="button"
-                iconLeft="refresh"
-                className={isRewriting ? undefined : 'new-plan-btn'}
-                disabled={isRewriting}
+              <NewPlanButton
+                key={day.day}
+                busy={isRewriting}
+                disabled={anyRewriting}
+                introPlayed={newPlanIntroPlayed}
                 onClick={() => onRegenerate(day.day)}
-              >
-                {isRewriting ? 'Planning…' : 'New plan'}
-              </Button>
+              />
               <Tooltip
                 side="bottom"
                 align="end"
@@ -421,6 +523,7 @@ export function DayTabs({
   const [value, setValue] = useState<TabsValue>('1')
   const rootRef = useRef<HTMLDivElement>(null)
   const alignedValue = useRef(value)
+  const newPlanIntroPlayed = useRef(false)
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -453,9 +556,11 @@ export function DayTabs({
         isLast={i === days.length - 1}
         aiLoading={aiLoading}
         isRewriting={regeneratingDay === d.day}
+        anyRewriting={regeneratingDay !== null}
         regenMessage={regenError?.day === d.day ? regenError.message : null}
         onRegenerate={onRegenerate}
         onStep={handleStep}
+        newPlanIntroPlayed={newPlanIntroPlayed}
       />
     ),
   }))
