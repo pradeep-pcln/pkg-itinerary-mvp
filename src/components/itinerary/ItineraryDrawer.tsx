@@ -1,4 +1,5 @@
-import { A, Drawer, Heading, Price, Span } from '@pcln/horizon'
+import { A, Button, Drawer, Heading, Price, Span } from '@pcln/horizon'
+import { useState } from 'react'
 import { useActivityImages } from '../../hooks/useActivityImages'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { useItinerary } from '../../hooks/useItinerary'
@@ -9,6 +10,7 @@ import { DrawerHero } from './DrawerHero'
 import { HotelSection } from './HotelSection'
 import { IncludesExcludes } from './IncludesExcludes'
 import { PriceBreakdown } from './PriceBreakdown'
+import { ShareTripBody, ShareTripFooter, ShareTripHeader, useShareTrip } from './ShareTrip'
 import { TransportSection } from './TransportSection'
 import { TripSummary } from './TripSummary'
 
@@ -35,14 +37,21 @@ function DrawerHeader({ pkg, title }: { pkg: NormalizedPackage; title: string })
   )
 }
 
-function DrawerFooter({ pkg }: { pkg: NormalizedPackage }) {
+function DrawerFooter({ pkg, onShare }: { pkg: NormalizedPackage; onShare: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-primary-4 bg-neutral-1 px-4 py-4 lg:px-6">
-      <div>
-        <Price type="priceSale" textStyle="heading3" bold currencySymbol={pkg.currencySymbol} price={formatAmount(pkg.bundleTotal)} suffix=" total" />
-        <Span textStyle="body2" palette="primary" shade="10" className="block">{travelersLabel(pkg.travelers)}</Span>
+    <div className="flex flex-col gap-3 border-t border-primary-4 bg-neutral-1 px-4 py-4 lg:px-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <Price type="priceSale" textStyle="heading3" bold currencySymbol={pkg.currencySymbol} price={formatAmount(pkg.bundleTotal)} suffix=" total" />
+          <Span textStyle="body2" palette="primary" shade="10" className="block">{travelersLabel(pkg.travelers)}</Span>
+        </div>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row-reverse sm:items-center">
+          <A type="primaryShop" size="lg" className="w-full sm:w-auto" href={bookUrl(pkg)} target="_blank" rel="noopener noreferrer">Book This Trip</A>
+          <Button type="secondary" size="lg" buttonType="button" className="w-full sm:w-auto" iconLeft="share" onClick={onShare}>
+            Share trip
+          </Button>
+        </div>
       </div>
-      <A type="primaryShop" size="lg" href={bookUrl(pkg)} target="_blank" rel="noopener noreferrer">Book This Trip</A>
     </div>
   )
 }
@@ -56,24 +65,37 @@ interface ItineraryDrawerProps {
 export function ItineraryDrawer({ pkg, open, onOpenChange }: Readonly<ItineraryDrawerProps>) {
   const isDesktop = useIsDesktop()
   const title = tripTitle(pkg)
-  const { aiDays, loading: aiLoading } = useItinerary(open ? pkg : null)
+  const { aiDays, loading: aiLoading, regeneratingDay, regenError, regenerateDay } = useItinerary(open ? pkg : null)
   const activityImages = useActivityImages(aiDays, cityName(pkg.destination))
+  const share = useShareTrip(pkg, aiDays, activityImages)
+  const [sharing, setSharing] = useState(false)
+
+  function closeShare() {
+    setSharing(false)
+    share.reset()
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) closeShare()
+    onOpenChange(nextOpen)
+  }
 
   return (
     <Drawer
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
       direction={isDesktop ? 'right' : 'bottom'}
       showDragHandle={!isDesktop}
       size="md"
       scroll="body"
       stickyFooter
-      title={title}
+      title={sharing ? 'Share this trip' : title}
       classNames={isDesktop ? DESKTOP_CLASS_NAMES : MOBILE_CLASS_NAMES}
-      headingCustomNode={<DrawerHeader pkg={pkg} title={title} />}
-      footer={<DrawerFooter pkg={pkg} />}
+      headingCustomNode={sharing ? <ShareTripHeader sent={share.sent} onBack={closeShare} /> : <DrawerHeader pkg={pkg} title={title} />}
+      footer={sharing ? <ShareTripFooter share={share} onBack={closeShare} /> : <DrawerFooter pkg={pkg} onShare={() => setSharing(true)} />}
     >
-      <div className="flex flex-col">
+      {sharing ? <ShareTripBody pkg={pkg} share={share} /> : null}
+      <div className={sharing ? 'hidden' : 'flex flex-col'}>
         <div className="px-4 pt-4 pb-6 lg:px-6">
           <DrawerHero pkg={pkg} />
         </div>
@@ -83,6 +105,9 @@ export function ItineraryDrawer({ pkg, open, onOpenChange }: Readonly<ItineraryD
             pkg={pkg}
             aiDays={aiDays}
             aiLoading={aiLoading}
+            regeneratingDay={regeneratingDay}
+            regenError={regenError}
+            onRegenerate={regenerateDay}
             activityImages={activityImages}
           />
         </div>

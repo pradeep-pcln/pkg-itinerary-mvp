@@ -1,14 +1,14 @@
 import { Button, Heading, P, Span, Spinner } from '@pcln/horizon'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { GlobalHeader, GlobalFooter } from './components/GlobalHeader'
 import { FilterSidebar, DEFAULT_FILTERS, applyFilters } from './components/FilterSidebar'
 import type { Filters } from './components/FilterSidebar'
 import { PackageCard, PackageCardSkeleton } from './components/PackageCard'
 import { LazyItineraryDrawer } from './components/itinerary/loadItineraryDrawer'
-import { usePackages, prefetchPackages } from './hooks/usePackages'
 import type { SearchParams } from './hooks/usePackages'
 import { SearchForm } from './components/SearchForm'
-import { cityName, shortDate } from './lib/itinerary'
+import { usePackages, prefetchPackages } from './hooks/usePackages'
+import { cityName, SHARE_PACKAGE_PARAM, shortDate } from './lib/itinerary'
 import type { NormalizedPackage } from './types'
 
 const DEFAULT_SEARCH_PARAMS: SearchParams = {
@@ -92,6 +92,17 @@ export default function App() {
   // Kept separate from `itineraryOpen` so drawer content stays rendered during its close animation
   const [itineraryPkg, setItineraryPkg] = useState<NormalizedPackage | null>(null)
   const [itineraryOpen, setItineraryOpen] = useState(false)
+  const sharedPackageKey = new URLSearchParams(window.location.search).get(SHARE_PACKAGE_PARAM)
+  const didOpenSharedPackage = useRef(false)
+
+  useEffect(() => {
+    if (!sharedPackageKey || didOpenSharedPackage.current || loading) return
+    const match = packages.find((pkg) => pkg.hotelItemKey === sharedPackageKey)
+    if (!match) return
+    didOpenSharedPackage.current = true
+    setItineraryPkg(match)
+    setItineraryOpen(true)
+  }, [sharedPackageKey, loading, packages])
 
   function handleRefresh() {
     setSearchParams({ ...searchParams })
