@@ -1,6 +1,6 @@
 import { A, Badge, Button, CdnIcon, Disc, Heading, IconButton, Skeleton, Span, Tabs, Tooltip } from '@pcln/horizon'
 import type { DiscProps, TabsValue, ValidGoogleSymbol } from '@pcln/horizon'
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { buildItineraryDays, formatLongDate, mergeAiDays } from '../../lib/itinerary'
 import type { ActivityImageResult, AiDay, ItineraryDay, ItineraryItem, ItineraryItemKind } from '../../lib/itinerary'
 import type { NormalizedPackage } from '../../types'
@@ -387,6 +387,31 @@ interface DayTabsProps {
   activityImages: ReadonlyMap<string, ActivityImageResult>
 }
 
+function verticalScrollParent(node: HTMLElement): HTMLElement | null {
+  let current = node.parentElement
+  while (current) {
+    const { overflowY } = getComputedStyle(current)
+    if ((overflowY === 'auto' || overflowY === 'scroll') && current.scrollHeight > current.clientHeight + 1) {
+      return current
+    }
+    current = current.parentElement
+  }
+  return null
+}
+
+// The drawer body keeps its scroll offset when a tab swaps the day in place,
+// so pin the day section to the top of that scroller: the tabs stick there and
+// the date line sits right under them. Coming from further down the new day is
+// already on screen, so jump instantly; a smooth scroll there would visibly
+// travel through the hero. Going down from the hero, scroll smoothly.
+function alignDayHeader(root: HTMLElement) {
+  const scroller = verticalScrollParent(root)
+  if (!scroller) return
+  const delta = root.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  if (Math.abs(delta) <= 1) return
+  scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: delta < 0 ? 'auto' : 'smooth' })
+}
+
 // Keyed on the package by the parent so the selected day resets per package
 export function DayTabs({
   pkg, aiDays, aiLoading, regeneratingDay, regenError, onRegenerate, activityImages,
@@ -395,20 +420,25 @@ export function DayTabs({
   const days = aiDays && aiDays.length > 0 ? mergeAiDays(staticDays, aiDays, activityImages) : staticDays
   const [value, setValue] = useState<TabsValue>('1')
   const rootRef = useRef<HTMLDivElement>(null)
+  const alignedValue = useRef(value)
+
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const index = Number(value) - 1
+    const tab = root.querySelectorAll<HTMLElement>('[role="tab"]')[index]
+    const list = tab?.parentElement
+    if (tab && list) {
+      list.scrollTo({ left: tab.offsetLeft - (list.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
+    }
+    if (alignedValue.current === value) return
+    alignedValue.current = value
+    alignDayHeader(root)
+  }, [value])
 
   function handleStep(delta: number) {
     const nextIndex = Math.min(Math.max(Number(value) - 1 + delta, 0), days.length - 1)
     setValue(String(nextIndex + 1))
-
-    const root = rootRef.current
-    const tab = root?.querySelectorAll<HTMLElement>('[role="tab"]')[nextIndex]
-    const list = tab?.parentElement
-    if (!root || !tab || !list) return
-    list.scrollTo({ left: tab.offsetLeft - (list.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
-    // Once the tab row is stuck, the new day's top is hidden above it
-    if (root.getBoundingClientRect().top < list.getBoundingClientRect().top) {
-      root.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    }
   }
 
   const tabsContent = days.map((d, i) => ({
