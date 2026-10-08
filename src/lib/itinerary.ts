@@ -419,6 +419,44 @@ export function mergeAiDays(
   })
 }
 
+export const SHARE_PACKAGE_PARAM = 'pkg'
+
+export function itineraryDaysForShare(
+  pkg: NormalizedPackage,
+  aiDays: AiDay[] | null,
+  activityImages: ReadonlyMap<string, ActivityImageResult>,
+): ItineraryDay[] {
+  const staticDays = buildItineraryDays(pkg)
+  if (!aiDays || aiDays.length === 0) return staticDays
+  return mergeAiDays(staticDays, aiDays, activityImages)
+}
+
+export function shareUrl(pkg: NormalizedPackage, pageHref: string): string {
+  const url = new URL(pageHref)
+  url.searchParams.set(SHARE_PACKAGE_PARAM, pkg.hotelItemKey)
+  url.hash = ''
+  return url.toString()
+}
+
+function shareItemLine(item: ItineraryItem): string {
+  return item.time ? `${item.time} ${item.title}` : item.title
+}
+
+export function shareTripText(pkg: NormalizedPackage, days: ItineraryDay[], pageHref: string): string {
+  const perPerson = perPersonPrice(pkg)
+  const total = `${pkg.currencySymbol}${formatAmount(pkg.bundleTotal)} total`
+  const priceLine = perPerson > 0
+    ? `${total} · ${pkg.currencySymbol}${formatAmount(perPerson)} per person`
+    : total
+  const header = [
+    tripTitle(pkg),
+    `${shortDate(pkg.departDate)} – ${shortDate(pkg.returnDate)} · ${nightsLabel(pkg.nights)} · ${travelersLabel(pkg.travelers)}`,
+    priceLine,
+  ]
+  const dayBlocks = days.map((day) => [`Day ${day.day} — ${day.title}`, ...day.items.map(shareItemLine)].join('\n'))
+  return [...header, '', dayBlocks.join('\n\n'), '', 'Open this package:', shareUrl(pkg, pageHref)].join('\n')
+}
+
 export function tripHighlights(pkg: NormalizedPackage): string[] {
   const candidates: Array<[boolean, string]> = [
     [true, pkg.airline ? `Round-trip flights on ${pkg.airline}` : 'Round-trip flights'],

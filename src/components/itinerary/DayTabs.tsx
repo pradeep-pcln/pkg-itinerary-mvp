@@ -1,4 +1,4 @@
-import { A, Badge, Button, CdnIcon, Disc, Heading, Skeleton, Span, Tabs } from '@pcln/horizon'
+import { A, Badge, Button, CdnIcon, Disc, Heading, IconButton, Skeleton, Span, Tabs, Tooltip } from '@pcln/horizon'
 import type { DiscProps, TabsValue, ValidGoogleSymbol } from '@pcln/horizon'
 import { useRef, useState } from 'react'
 import { buildItineraryDays, formatLongDate, mergeAiDays } from '../../lib/itinerary'
@@ -80,13 +80,49 @@ function TimelineRow({ item, isLast }: { item: ItineraryItem; isLast: boolean })
   )
 }
 
+const PLAN_MOTION = (
+  <style>{`
+    @keyframes dayPlanIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes planPulse {
+      0%, 100% { opacity: 0.35; transform: scale(0.85); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+    .day-plan-row { animation: dayPlanIn 0.45s ease both; }
+    .day-plan-row:nth-child(2) { animation-delay: 140ms; }
+    .day-plan-row:nth-child(3) { animation-delay: 280ms; }
+    .day-plan-in { animation: dayPlanIn 0.4s ease both; }
+    .day-plan-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      background: currentColor;
+      display: inline-block;
+      animation: planPulse 1.2s ease-in-out infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .day-plan-row, .day-plan-in, .day-plan-dot { animation: none; }
+    }
+  `}</style>
+)
+
+function PlanningDot() {
+  return (
+    <span aria-hidden className="mr-2 flex size-2 shrink-0 text-actionPrimary-8">
+      <span className="day-plan-dot" />
+    </span>
+  )
+}
+
 const SKELETON_ROWS = [0, 1, 2] as const
 
 function FreeDaySkeleton() {
   return (
     <ol className="flex flex-col" aria-busy="true" aria-label="Loading suggested activities">
       {SKELETON_ROWS.map((row) => (
-        <li key={row} className="grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3">
+        <li key={row} className="day-plan-row grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3">
           <Skeleton type="body2" className="mt-1.5 ml-auto w-12" />
           <div className="relative flex justify-center">
             <Skeleton type="image" width="2rem" height="2rem" className="rounded-full" />
@@ -112,32 +148,79 @@ interface DayPanelProps {
   isFirst: boolean
   isLast: boolean
   aiLoading: boolean
+  isRewriting: boolean
+  regenMessage: string | null
+  onRegenerate: (day: number) => void
   onStep: (delta: number) => void
 }
 
-function DayPanel({ day, isFirst, isLast, aiLoading, onStep }: Readonly<DayPanelProps>) {
-  const showSkeleton = day.isFreeDay && aiLoading
+function DayPanel({
+  day, isFirst, isLast, aiLoading, isRewriting, regenMessage, onRegenerate, onStep,
+}: Readonly<DayPanelProps>) {
+  const hasSuggestions = day.items.some((item) => item.isAiSuggested)
+  const isPlanning = day.isFreeDay && aiLoading
+  const showSkeleton = isPlanning || isRewriting
+  const showNewPlan = hasSuggestions || isRewriting
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <Span textStyle="body2" bold palette="actionPrimary" shade="8">
-          Day {day.day} · {formatLongDate(day.date)}
-        </Span>
-        <Heading as="h4" textStyle="heading3" palette="primary" shade="13">{day.title}</Heading>
-        <Span textStyle="body1" palette="primary" shade="10">{day.description}</Span>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <Span textStyle="body2" bold palette="actionPrimary" shade="8">
+            Day {day.day} · {formatLongDate(day.date)}
+          </Span>
+          {showNewPlan ? (
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="primary"
+                size="sm"
+                buttonType="button"
+                disabled={isRewriting}
+                onClick={() => onRegenerate(day.day)}
+              >
+                {isRewriting ? `Writing a new Day ${day.day}` : 'New plan'}
+              </Button>
+              <Tooltip
+                side="top"
+                showArrow
+                color="neutral"
+                delay={150}
+                triggerNode={(
+                  <IconButton type="plainPrimary" size="sm" iconName="info" aria-label="What does New plan do?" />
+                )}
+              >
+                {`Not feeling Day ${day.day}? Tap New plan for fresh spots and new food. Your other days stay exactly as they are.`}
+              </Tooltip>
+            </div>
+          ) : null}
+        </div>
+        {isPlanning ? (
+          <Span textStyle="body1" palette="primary" shade="10">Planning your free days</Span>
+        ) : null}
+        {isRewriting ? (
+          <Span textStyle="body1" palette="primary" shade="10">The other days stay the same.</Span>
+        ) : null}
+        {regenMessage && !isRewriting ? (
+          <Span textStyle="body2" palette="caution" shade="10">{regenMessage}</Span>
+        ) : null}
+        {showSkeleton ? null : (
+          <>
+            <Heading as="h4" textStyle="heading3" palette="primary" shade="13">{day.title}</Heading>
+            <Span textStyle="body1" palette="primary" shade="10">{day.description}</Span>
+          </>
+        )}
       </div>
 
       {showSkeleton ? (
         <FreeDaySkeleton />
       ) : day.items.length > 0 ? (
-        <ol className="flex flex-col">
+        <ol className="day-plan-in flex flex-col">
           {day.items.map((item, i) => (
             <TimelineRow key={`${item.kind}-${item.title}-${i}`} item={item} isLast={i === day.items.length - 1} />
           ))}
         </ol>
       ) : null}
 
-      {(() => {
+      {showSkeleton ? null : (() => {
         const attractions = day.items.filter((item) => item.kind === 'activity' && item.imageUrl)
         const restaurants = day.items.filter((item) => item.kind === 'meal' && item.imageUrl)
         if (attractions.length === 0 && restaurants.length === 0) return null
@@ -209,11 +292,16 @@ interface DayTabsProps {
   pkg: NormalizedPackage
   aiDays: AiDay[] | null
   aiLoading: boolean
+  regeneratingDay: number | null
+  regenError: { day: number; message: string } | null
+  onRegenerate: (day: number) => void
   activityImages: ReadonlyMap<string, ActivityImageResult>
 }
 
 // Keyed on the package by the parent so the selected day resets per package
-export function DayTabs({ pkg, aiDays, aiLoading, activityImages }: Readonly<DayTabsProps>) {
+export function DayTabs({
+  pkg, aiDays, aiLoading, regeneratingDay, regenError, onRegenerate, activityImages,
+}: Readonly<DayTabsProps>) {
   const staticDays = buildItineraryDays(pkg)
   const days = aiDays && aiDays.length > 0 ? mergeAiDays(staticDays, aiDays, activityImages) : staticDays
   const [value, setValue] = useState<TabsValue>('1')
@@ -237,13 +325,17 @@ export function DayTabs({ pkg, aiDays, aiLoading, activityImages }: Readonly<Day
   const tabsContent = days.map((d, i) => ({
     value: String(d.day),
     label: `Day ${d.day}`,
-    helperText: d.tabLabel,
+    helperText: aiLoading && d.isFreeDay ? 'Planning' : d.tabLabel,
+    iconLeft: aiLoading && d.isFreeDay ? <PlanningDot /> : undefined,
     panelContent: (
       <DayPanel
         day={d}
         isFirst={i === 0}
         isLast={i === days.length - 1}
         aiLoading={aiLoading}
+        isRewriting={regeneratingDay === d.day}
+        regenMessage={regenError?.day === d.day ? regenError.message : null}
+        onRegenerate={onRegenerate}
         onStep={handleStep}
       />
     ),
@@ -251,6 +343,7 @@ export function DayTabs({ pkg, aiDays, aiLoading, activityImages }: Readonly<Day
 
   return (
     <section ref={rootRef} aria-label="Day-by-day itinerary">
+      {PLAN_MOTION}
       <Tabs tabsContent={tabsContent} value={value} onValueChange={setValue} slotClassNames={TABS_SLOT_CLASS_NAMES} />
     </section>
   )

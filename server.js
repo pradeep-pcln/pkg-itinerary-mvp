@@ -1163,10 +1163,98 @@ Create a day-by-day itinerary for the ${freeDays} free middle days of this trip 
   return { systemPrompt, userPrompt }
 }
 
+function buildSingleDayPrompt({ destinationCity, hotelName, allInclusive, departDate, day, avoidDays }) {
+  const month = new Date(`${departDate}T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })
+  const inclusiveNote = allInclusive
+    ? 'The hotel is all-inclusive, so meals at the hotel require no travel.'
+    : 'The hotel is not all-inclusive; feel free to recommend local dining.'
+  const avoid = avoidDays.length > 0
+    ? avoidDays.map((other) => `Day ${other.day}: ${other.title}. Activities: ${other.items.join(', ') || 'none'}`).join('\n')
+    : 'None.'
+
+  const systemPrompt = `You are a travel itinerary expert. Respond ONLY with a valid JSON object — no prose, no markdown, no code fences.
+
+Schema:
+{
+  "days": [
+    {
+      "day": <number>,
+      "tabLabel": <string, 3-5 words>,
+      "title": <string, concise day headline>,
+      "description": <string, 1-2 sentences overview, max 500 chars>,
+      "items": [
+        {
+          "time": <string, e.g. "9:00 AM">,
+          "category": <string, one of: activity|dining|transport|leisure>,
+          "title": <string>,
+          "description": <string, max 500 chars>
+        }
+      ]
+    }
+  ]
+}
+
+Rules (violations cause rejection):
+- Generate exactly 1 day object, and its "day" number must be ${day}.
+- The title and activities must be different from every other day listed below.
+- Every field listed in the schema must be present and non-empty.
+- Do NOT include any prices, costs, fees, rates, dollar amounts, or currency symbols anywhere.
+- Do NOT include booking URLs, affiliate links, or commercial recommendations.
+- Do NOT wrap the JSON in markdown or add any text outside the JSON object.`
+
+  const userPrompt = `Destination: ${destinationCity}
+Hotel: ${hotelName}
+Trip month: ${month}
+${inclusiveNote}
+
+Write a new plan for day ${day} only.
+Do not repeat these existing days:
+${avoid}`
+
+  return { systemPrompt, userPrompt }
+}
+
+function cleanAvoidDays(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, 10).flatMap((entry) => {
+    if (!entry || typeof entry.title !== 'string' || !entry.title.trim()) return []
+    const items = Array.isArray(entry.items)
+      ? entry.items.filter((title) => typeof title === 'string' && title.trim()).slice(0, 8).map((title) => title.slice(0, 80))
+      : []
+    return [{ day: Number(entry.day) || 0, title: entry.title.slice(0, 100), items }]
+  })
+}
+
+function normalizedPlanText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function planTooSimilar(day, avoidDays) {
+  const blocked = new Set()
+  for (const other of avoidDays) {
+    blocked.add(normalizedPlanText(other.title))
+    for (const title of other.items) blocked.add(normalizedPlanText(title))
+  }
+  blocked.delete('')
+  if (blocked.has(normalizedPlanText(day.title))) return true
+  const matches = day.items.filter((item) => blocked.has(normalizedPlanText(item.title))).length
+  return matches >= 2
+}
+
+function replaceCachedItineraryDay(cacheKey, day) {
+  const cached = itineraryCache.get(cacheKey)
+  if (!cached || Date.now() >= cached.expiresAt || !Array.isArray(cached.days)) return
+  const exists = cached.days.some((entry) => entry.day === day.day)
+  const days = exists
+    ? cached.days.map((entry) => (entry.day === day.day ? day : entry))
+    : [...cached.days, day].sort((a, b) => a.day - b.day)
+  itineraryCache.set(cacheKey, { days, expiresAt: cached.expiresAt })
+}
+
 // --- OpenAI / LiteLLM caller ---
 // Set OPENAI_BASE_URL in .env to point at a LiteLLM proxy (e.g. http://localhost:4000).
 // Defaults to https://api.openai.com for direct OpenAI usage.
-async function callOpenAI(systemPrompt, userPrompt) {
+async function callOpenAI(systemPrompt, userPrompt, options = {}) {
   const key = process.env.OPENAI_API_KEY
   if (!key || key.startsWith('sk-...')) throw new Error('OPENAI_API_KEY not set or is still a placeholder')
 
@@ -1181,7 +1269,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
   const body = {
     model,
     ...(isClaudeModel ? {} : { response_format: { type: 'json_object' } }),
-    temperature: 0.7,
+    temperature: options.temperature ?? 0.7,
     max_tokens: 4096,
     messages: [
       { role: 'system', content: systemPrompt },
@@ -1289,16 +1377,47 @@ app.post(
     }
 
     const cacheKey = buildItineraryCacheKey({ destinationCityId: destinationCityId ?? '', nights, hotelName, allInclusive: !!allInclusive, departDate })
+    const regenerateDay = Number(req.body?.regenerateDay)
+    const isSingleDay = Number.isInteger(regenerateDay) && regenerateDay >= 2 && regenerateDay <= Number(nights)
     const cached = itineraryCache.get(cacheKey)
-    if (cached && Date.now() < cached.expiresAt) {
+    if (!isSingleDay && cached && Date.now() < cached.expiresAt) {
       log('info', 'itinerary cache hit', { cacheKey })
       return res.json({ days: cached.days, cached: true })
     }
 
-    log('info', 'itinerary cache miss — calling OpenAI', { destinationCity, hotelName, nights })
+    log('info', isSingleDay ? 'itinerary day regenerate — skipping saved week' : 'itinerary cache miss — calling OpenAI', {
+      destinationCity, hotelName, nights, ...(isSingleDay ? { day: regenerateDay } : {}),
+    })
     const start = Date.now()
 
     try {
+      if (isSingleDay) {
+        const avoidDays = cleanAvoidDays(req.body?.avoidDays)
+        let extraAvoid = []
+        let replacement = null
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const { systemPrompt, userPrompt } = buildSingleDayPrompt({
+            destinationCity, hotelName, nights, allInclusive: !!allInclusive, departDate,
+            day: regenerateDay,
+            avoidDays: [...avoidDays, ...extraAvoid],
+          })
+          const raw = await callOpenAI(systemPrompt, userPrompt, { temperature: 0.9 })
+          const validated = validateItineraryResponse(raw)
+          const day = validated.days.find((entry) => entry.day === regenerateDay) ?? validated.days[0]
+          if (!day) throw new ValidationError('Single-day response was empty')
+          day.day = regenerateDay
+          if (attempt === 0 && planTooSimilar(day, avoidDays)) {
+            extraAvoid = [{ day: day.day, title: day.title, items: day.items.map((item) => item.title) }]
+            continue
+          }
+          replacement = day
+          break
+        }
+        replaceCachedItineraryDay(cacheKey, replacement)
+        log('info', 'itinerary day replaced', { durationMs: Date.now() - start, day: regenerateDay })
+        return res.json({ days: [replacement], cached: false })
+      }
+
       const { systemPrompt, userPrompt } = buildItineraryPrompt({ destinationCity, hotelName, nights, allInclusive: !!allInclusive, departDate })
       const raw = await callOpenAI(systemPrompt, userPrompt)
       const validated = validateItineraryResponse(raw)
