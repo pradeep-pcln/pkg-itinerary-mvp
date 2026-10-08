@@ -102,8 +102,13 @@ const PLAN_MOTION = (
       display: inline-block;
       animation: planPulse 1.2s ease-in-out infinite;
     }
+    @keyframes newPlanGlow {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-1px); }
+    }
+    .new-plan-btn { animation: newPlanGlow 2.2s ease-in-out infinite; }
     @media (prefers-reduced-motion: reduce) {
-      .day-plan-row, .day-plan-in, .day-plan-dot { animation: none; }
+      .day-plan-row, .day-plan-in, .day-plan-dot, .new-plan-btn { animation: none; }
     }
   `}</style>
 )
@@ -171,24 +176,28 @@ function DayPanel({
           {showNewPlan ? (
             <div className="flex items-center gap-1.5">
               <Button
-                type="primary"
+                type="radialPrimary"
                 size="sm"
                 buttonType="button"
+                iconLeft="refresh"
+                className={isRewriting ? undefined : 'new-plan-btn'}
                 disabled={isRewriting}
                 onClick={() => onRegenerate(day.day)}
               >
-                {isRewriting ? `Writing a new Day ${day.day}` : 'New plan'}
+                {isRewriting ? 'Writing…' : 'New plan'}
               </Button>
               <Tooltip
-                side="top"
+                side="bottom"
+                align="end"
                 showArrow
                 color="neutral"
                 delay={150}
+                className="max-w-[12rem]"
                 triggerNode={(
                   <IconButton type="plainPrimary" size="sm" iconName="info" aria-label="What does New plan do?" />
                 )}
               >
-                {`Not feeling Day ${day.day}? Tap New plan for fresh spots and new food. Your other days stay exactly as they are.`}
+                {`Not feeling Day ${day.day}? Fresh take.`}
               </Tooltip>
             </div>
           ) : null}

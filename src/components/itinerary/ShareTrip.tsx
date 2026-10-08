@@ -1,6 +1,6 @@
 import { Button, CdnIcon, Heading, IconButton, InputChip, InputText, Span } from '@pcln/horizon'
 import type { ValidGoogleSymbol } from '@pcln/horizon'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import {
   cityName,
   formatAmount,
@@ -22,12 +22,14 @@ export function useShareTrip(pkg: NormalizedPackage, aiDays: AiDay[] | null, act
   const [email, setEmail] = useState('')
   const [recipients, setRecipients] = useState<string[]>([])
   const [error, setError] = useState('')
+  const [errorNotice, setErrorNotice] = useState(0)
   const [sent, setSent] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const days = itineraryDaysForShare(pkg, aiDays, activityImages)
   const destination = cityName(pkg.destination)
   const subject = `${destination} together? Here’s the plan`
+  const greeting = `I found this ${destination} trip and wanted to share the plan with you.`
   const pageHref = window.location.href
   const tripLink = shareUrl(pkg, pageHref)
 
@@ -35,6 +37,7 @@ export function useShareTrip(pkg: NormalizedPackage, aiDays: AiDay[] | null, act
     setEmail('')
     setRecipients([])
     setError('')
+    setErrorNotice(0)
     setSent(false)
     setCopied(false)
   }
@@ -44,15 +47,20 @@ export function useShareTrip(pkg: NormalizedPackage, aiDays: AiDay[] | null, act
     if (error) setError('')
   }
 
+  function reportError(message: string) {
+    setError(message)
+    setErrorNotice((notice) => notice + 1)
+  }
+
   function addRecipients(): string[] | null {
     const candidates = email.split(EMAIL_SEPARATORS).map((value) => value.trim().toLowerCase()).filter(Boolean)
     if (candidates.length === 0) {
-      setError('Enter an email address')
+      reportError('Enter an email address')
       return null
     }
     const invalid = candidates.find((candidate) => !EMAIL_PATTERN.test(candidate))
     if (invalid) {
-      setError(`“${invalid}” doesn’t look like an email`)
+      reportError(`“${invalid}” doesn’t look like an email`)
       return null
     }
     const next = [...new Set([...recipients, ...candidates])]
@@ -70,7 +78,7 @@ export function useShareTrip(pkg: NormalizedPackage, aiDays: AiDay[] | null, act
     const finalRecipients = email.trim() ? addRecipients() : recipients
     if (!finalRecipients) return
     if (finalRecipients.length === 0) {
-      setError('Add at least one email address')
+      reportError('Add at least one email address')
       return
     }
     setSent(true)
@@ -81,7 +89,7 @@ export function useShareTrip(pkg: NormalizedPackage, aiDays: AiDay[] | null, act
       `Subject: ${subject}`,
       '',
       'Hi!',
-      `I found this ${destination} trip and wanted to share the plan with you.`,
+      greeting,
       '',
       shareTripText(pkg, days, pageHref),
       '',
@@ -96,7 +104,7 @@ export function useShareTrip(pkg: NormalizedPackage, aiDays: AiDay[] | null, act
   }
 
   return {
-    email, recipients, error, sent, copied, days, destination, subject, tripLink,
+    email, recipients, error, errorNotice, sent, copied, days, destination, subject, greeting, tripLink,
     reset, updateEmail, addRecipients, removeRecipient, send, copyEmail,
   }
 }
@@ -144,7 +152,7 @@ export function ShareTripFooter({ share, onBack }: Readonly<{ share: ShareTripSt
             Cancel
           </Button>
           <Button type="primary" size="lg" buttonType="button" className="w-full sm:w-auto" iconLeft="email" onClick={share.send}>
-            {share.recipients.length > 1 ? `Send email to ${share.recipients.length}` : 'Send email'}
+            Send email
           </Button>
         </>
       )}
@@ -155,17 +163,24 @@ export function ShareTripFooter({ share, onBack }: Readonly<{ share: ShareTripSt
 
 export function ShareTripBody({ pkg, share }: Readonly<{ pkg: NormalizedPackage; share: ShareTripState }>) {
   const topRef = useRef<HTMLDivElement>(null)
+  const fieldRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     topRef.current?.scrollIntoView({ block: 'start' })
   }, [share.sent])
+
+  useEffect(() => {
+    if (!share.errorNotice) return
+    fieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    fieldRef.current?.querySelector('input')?.focus()
+  }, [share.errorNotice])
 
   return (
     <div ref={topRef} className="flex flex-col gap-6 px-4 pt-2 pb-8 lg:px-6">
       {share.sent ? (
         <SentBanner recipients={share.recipients} />
       ) : (
-        <RecipientsField share={share} />
+        <RecipientsField ref={fieldRef} share={share} />
       )}
       <section className="flex flex-col gap-3" aria-label="Email preview">
         <div className="flex items-center justify-between gap-2">
@@ -180,9 +195,9 @@ export function ShareTripBody({ pkg, share }: Readonly<{ pkg: NormalizedPackage;
   )
 }
 
-function RecipientsField({ share }: Readonly<{ share: ShareTripState }>) {
+function RecipientsField({ share, ref }: Readonly<{ share: ShareTripState; ref?: Ref<HTMLElement> }>) {
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-primary-4 bg-neutral-1 p-4">
+    <section ref={ref} className="flex scroll-mt-4 flex-col gap-3 rounded-2xl border border-primary-4 bg-neutral-1 p-4">
       <div className="flex flex-col gap-1">
         <Heading as="h3" textStyle="heading5" palette="primary" shade="13">Who’s coming along?</Heading>
         <Span textStyle="body2" palette="primary" shade="10">Add one or more emails. Press Enter or comma to add each one.</Span>
@@ -205,7 +220,7 @@ function RecipientsField({ share }: Readonly<{ share: ShareTripState }>) {
           placeholder="friend@example.com"
           iconLeft="mail"
           value={share.email}
-          errorText={share.error || undefined}
+          errorMessage={share.error || undefined}
           hasExternalError={Boolean(share.error)}
           onChange={(event) => share.updateEmail(event.target.value)}
           onKeyDown={(event) => {
@@ -273,12 +288,10 @@ function EmailPreview({ pkg, share }: Readonly<{ pkg: NormalizedPackage; share: 
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 px-5 py-6">
+      <div className="flex flex-col gap-5 px-5 py-6">
         <div className="flex flex-col gap-1">
           <Span textStyle="body1" palette="primary" shade="13">Hi!</Span>
-          <Span textStyle="body1" palette="primary" shade="10">
-            I found this {share.destination} trip and wanted to share the plan with you.
-          </Span>
+          <Span textStyle="body1" palette="primary" shade="10">{share.greeting}</Span>
         </div>
 
         <div className="grid grid-cols-2 gap-4 rounded-xl bg-primary-2 p-4 sm:grid-cols-4">
@@ -288,11 +301,11 @@ function EmailPreview({ pkg, share }: Readonly<{ pkg: NormalizedPackage; share: 
           <TripFact icon="paid" label="Trip total" value={`${pkg.currencySymbol}${formatAmount(pkg.bundleTotal)}`} />
         </div>
 
-        <div className="flex flex-col gap-3">
-          <Heading as="h4" textStyle="heading5" palette="primary" shade="13">Day by day</Heading>
-          <ol className="flex flex-col">
-            {share.days.map((day, i) => (
-              <PreviewDay key={day.day} day={day} isLast={i === share.days.length - 1} />
+        <div className="flex flex-col gap-3 rounded-2xl bg-primary-2/70 p-4">
+          <Heading as="h4" textStyle="heading5" palette="primary" shade="13">Day by Day Plan</Heading>
+          <ol className="flex flex-col gap-2">
+            {share.days.map((day) => (
+              <PreviewDay key={day.day} day={day} />
             ))}
           </ol>
         </div>
@@ -307,25 +320,25 @@ function EmailPreview({ pkg, share }: Readonly<{ pkg: NormalizedPackage; share: 
           <CdnIcon iconName="open_in_new" size="20" />
         </a>
 
-        <Span textStyle="body3" palette="primary" shade="8" className="text-center">
-          Suggested activities are ideas only and are not included in the package price.
-        </Span>
+        <div className="flex items-center justify-center gap-1.5 text-center">
+          <CdnIcon iconName="info" size="16" palette="primary" shade="8" />
+          <Span textStyle="body3" palette="primary" shade="8">
+            Suggested activities are ideas only and are not included in the package price.
+          </Span>
+        </div>
       </div>
     </article>
   )
 }
 
-function PreviewDay({ day, isLast }: Readonly<{ day: ItineraryDay; isLast: boolean }>) {
+function PreviewDay({ day }: Readonly<{ day: ItineraryDay }>) {
   const highlights = day.items.slice(0, 3).map((item) => item.title).join(' · ')
   return (
-    <li className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3">
-      <div className="relative flex justify-center">
-        <span className="z-1 flex size-9 items-center justify-center rounded-full bg-actionPrimary-1 text-body2 font-semibold text-actionPrimary-8">
-          {day.day}
-        </span>
-        {isLast ? null : <span aria-hidden className="absolute top-10 bottom-1 w-0.5 rounded-full bg-primary-4" />}
-      </div>
-      <div className={`flex min-w-0 flex-col gap-0.5 pt-1.5 ${isLast ? '' : 'pb-4'}`}>
+    <li className="flex items-start gap-3 rounded-xl bg-neutral-1 px-3 py-2.5 shadow-sm">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-actionPrimary-8 text-body3 font-semibold text-neutral-1">
+        {day.day}
+      </span>
+      <div className="flex min-w-0 flex-col gap-0.5">
         <Span textStyle="body2" bold palette="primary" shade="13">{day.title}</Span>
         {highlights ? <Span textStyle="body3" palette="primary" shade="10">{highlights}</Span> : null}
       </div>
