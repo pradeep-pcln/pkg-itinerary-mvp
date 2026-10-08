@@ -17,7 +17,7 @@ export function IncludesExcludes({ pkg }: { pkg: NormalizedPackage }) {
         </ul>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-error-5 bg-error-2 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-error-5 bg-error-3 p-4">
         <Heading as="h3" textStyle="heading5" palette="primary" shade="13">Package Excludes</Heading>
         <ul className="flex flex-col gap-2">
           {packageExcludes(pkg).map((item) => (

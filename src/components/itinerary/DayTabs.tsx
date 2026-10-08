@@ -138,58 +138,35 @@ function DayPanel({ day, isFirst, isLast, aiLoading, onStep }: Readonly<DayPanel
       ) : null}
 
       {(() => {
-        const attractions = day.items.filter((item) => item.kind === 'activity' && item.imageUrl)
-        const restaurants = day.items.filter((item) => item.kind === 'meal' && item.imageUrl)
-        if (attractions.length === 0 && restaurants.length === 0) return null
-
-        function PlaceCard({ item }: { item: ItineraryItem }) {
-          const content = (
-            <div className="flex flex-col overflow-hidden rounded-xl border border-primary-4 transition-shadow hover:shadow-md">
-              <img src={item.imageUrl!} alt={item.title} className="h-[140px] w-full object-cover" />
-              <div className="p-3">
-                <Heading as="h5" textStyle="heading6" palette="primary" shade="13" className="line-clamp-2">{item.title}</Heading>
-              </div>
-            </div>
-          )
-          const mapsUrl = item.attribution?.googleMapsUrl
-          return mapsUrl ? (
-            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="block no-underline">
-              {content}
-            </a>
-          ) : (
-            <div>{content}</div>
-          )
-        }
+        const places = day.items.filter(
+          (item) => (item.kind === 'activity' || item.kind === 'meal') && item.imageUrl,
+        )
+        if (places.length === 0) return null
 
         return (
-          <>
-            {attractions.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <Heading as="h4" textStyle="heading5" palette="primary" shade="13">Attractions</Heading>
-                <div
-                  className="grid gap-3"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-                >
-                  {attractions.map((item, i) => (
-                    <PlaceCard key={`attr-${item.title}-${i}`} item={item} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {restaurants.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <Heading as="h4" textStyle="heading5" palette="primary" shade="13">Restaurants</Heading>
-                <div
-                  className="grid gap-3"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-                >
-                  {restaurants.map((item, i) => (
-                    <PlaceCard key={`rest-${item.title}-${i}`} item={item} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+          <div className="flex flex-col gap-3">
+            <Heading as="h4" textStyle="heading5" palette="primary" shade="13">Attractions &amp; Restaurants</Heading>
+            <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none]">
+              {places.map((item, i) => {
+                const card = (
+                  <div className="flex w-40 flex-none flex-col overflow-hidden rounded-xl border border-primary-4 transition-shadow hover:shadow-md sm:w-48">
+                    <img src={item.imageUrl!} alt={item.title} className="h-[120px] w-full object-cover" />
+                    <div className="p-2">
+                      <Span textStyle="body2" bold palette="primary" shade="13" className="line-clamp-2">{item.title}</Span>
+                    </div>
+                  </div>
+                )
+                const mapsUrl = item.attribution?.googleMapsUrl
+                return mapsUrl ? (
+                  <a key={`place-${item.title}-${i}`} href={mapsUrl} target="_blank" rel="noopener noreferrer" className="block flex-none no-underline">
+                    {card}
+                  </a>
+                ) : (
+                  <div key={`place-${item.title}-${i}`} className="flex-none">{card}</div>
+                )
+              })}
+            </div>
+          </div>
         )
       })()}
 

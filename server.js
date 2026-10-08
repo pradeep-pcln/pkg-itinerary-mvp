@@ -243,7 +243,7 @@ async function createRequestCache({ originMetroCode, destinationCityId, departSe
               stayRequest: {
                 stayQuery: {
                   roomInfo: { count: 1 },
-                  staySearchRequestOption: { stayPagination: { pageSize: 30, offset: 1 } },
+                  staySearchRequestOption: { stayPagination: { pageSize: 10, offset: 1 } },
                 },
                 step: { reservedStep: 'SEARCH' },
               },
@@ -417,7 +417,7 @@ async function getSessionKey({ cacheKey, originMetroCode, destinationCityId, dep
   return sessionKey
 }
 
-async function unifiedSearch({ sessionKey, originMetroCode, destinationCityId, departSeconds, returnSeconds, adults, rguid }) {
+async function unifiedSearch({ sessionKey, originMetroCode, destinationCityId, destinationCityName, departSeconds, returnSeconds, adults, rguid }) {
   const body = {
     header: makeRestHeader(rguid),
     body: {
@@ -430,8 +430,8 @@ async function unifiedSearch({ sessionKey, originMetroCode, destinationCityId, d
               stayQuery: {
                 occupants: Array.from({ length: adults }, (_, i) => ({ id: i + 1, type: 'ADULT' })),
                 roomInfo: { count: 1 },
-                location: { area: { city: { cityName: 'Cancun', cityId: destinationCityId } } },
-                staySearchRequestOption: { stayPagination: { pageSize: 30, offset: 1 } },
+                location: { area: { city: { cityName: destinationCityName, cityId: destinationCityId } } },
+                staySearchRequestOption: { stayPagination: { pageSize: 10, offset: 1 } },
               },
             },
           },
@@ -458,7 +458,7 @@ async function unifiedSearch({ sessionKey, originMetroCode, destinationCityId, d
                 },
                 packageRequest: {
                   origin: { area: { airport: { metroAreaCode: originMetroCode } } },
-                  destination: { area: { city: { cityName: 'Cancun', cityId: destinationCityId } } },
+                  destination: { area: { city: { cityName: destinationCityName, cityId: destinationCityId } } },
                 },
               },
               step: { reservedStep: 'SEARCH' },
@@ -630,6 +630,7 @@ function normalizeProposal(proposal, stayItemsMap, flyItem, index, imageMap, air
     currencySymbol: '$',
     origin: searchParams.originAirport,
     destination: searchParams.destinationAirport,
+    destinationCityName: searchParams.destinationCityName ?? '',
     departDate: searchParams.departDate,
     returnDate: searchParams.returnDate,
     travelers: searchParams.travelers,
@@ -683,7 +684,7 @@ function toMidnightUtcSeconds(dateStr) {
   return Math.floor(new Date(`${dateStr}T00:00:00Z`).getTime() / 1000)
 }
 
-async function fetchPackages({ originAirport, originMetroCode, destinationAirport, destinationCityId, departDate, returnDate, travelers = 2 }) {
+async function fetchPackages({ originAirport, originMetroCode, destinationAirport, destinationCityId, destinationCityName, departDate, returnDate, travelers = 2 }) {
   const departSeconds = toMidnightUtcSeconds(departDate)
   const returnSeconds = toMidnightUtcSeconds(returnDate)
   const metroCode = originMetroCode || 'NYC'
@@ -700,6 +701,7 @@ async function fetchPackages({ originAirport, originMetroCode, destinationAirpor
   const start = Date.now()
   const json = await unifiedSearch({
     sessionKey, originMetroCode: metroCode, destinationCityId: cityId,
+    destinationCityName: destinationCityName || 'Cancun, Mexico',
     departSeconds, returnSeconds, adults: travelers, rguid,
   })
 
@@ -771,6 +773,67 @@ function attachCar(pkg, car) {
   }
 }
 
+// Curated lookup tables for origins/destinations — mirrors src/lib/destinations.ts
+const DESTINATIONS_DATA = [
+  { label: 'Cancun, Mexico',       airportCode: 'CUN', cityId: '3000061781', cityName: 'Cancun, Mexico' },
+  { label: 'Orlando, FL',          airportCode: 'MCO', cityId: '3000030878', cityName: 'Orlando, FL' },
+  { label: 'Miami, FL',            airportCode: 'MIA', cityId: '3000012627', cityName: 'Miami, FL' },
+  { label: 'Las Vegas, NV',        airportCode: 'LAS', cityId: '3000014762', cityName: 'Las Vegas, NV' },
+  { label: 'Los Angeles, CA',      airportCode: 'LAX', cityId: '3000014776', cityName: 'Los Angeles, CA' },
+  { label: 'San Francisco, CA',    airportCode: 'SFO', cityId: '3000032748', cityName: 'San Francisco, CA' },
+  { label: 'Honolulu, HI',         airportCode: 'HNL', cityId: '3000013349', cityName: 'Honolulu, HI' },
+  { label: 'Maui, HI',             airportCode: 'OGG', cityId: '3000020091', cityName: 'Maui, HI' },
+  { label: 'Punta Cana, Dom. Rep.',airportCode: 'PUJ', cityId: '3000028263', cityName: 'Punta Cana, Dominican Republic' },
+  { label: 'Jamaica (Kingston)',   airportCode: 'KIN', cityId: '3000014295', cityName: 'Kingston, Jamaica' },
+  { label: 'Montego Bay, Jamaica', airportCode: 'MBJ', cityId: '3000020473', cityName: 'Montego Bay, Jamaica' },
+  { label: 'Aruba',                airportCode: 'AUA', cityId: '3000003091', cityName: 'Oranjestad, Aruba' },
+  { label: 'Nassau, Bahamas',      airportCode: 'NAS', cityId: '3000021978', cityName: 'Nassau, Bahamas' },
+  { label: 'San Jose, Costa Rica', airportCode: 'SJO', cityId: '3000033003', cityName: 'San Jose, Costa Rica' },
+  { label: 'Cabo San Lucas, MX',   airportCode: 'SJD', cityId: '3000033063', cityName: 'Cabo San Lucas, Mexico' },
+  { label: 'Puerto Vallarta, MX',  airportCode: 'PVR', cityId: '3000028255', cityName: 'Puerto Vallarta, Mexico' },
+  { label: 'Cozumel, Mexico',      airportCode: 'CZM', cityId: '3000009029', cityName: 'Cozumel, Mexico' },
+  { label: 'Tulum, Mexico',        airportCode: 'CUN', cityId: '3000061781', cityName: 'Cancun, Mexico' },
+  { label: 'New York, NY',         airportCode: 'JFK', cityId: '3000021857', cityName: 'New York, NY' },
+  { label: 'Chicago, IL',          airportCode: 'ORD', cityId: '3000007714', cityName: 'Chicago, IL' },
+  { label: 'Denver, CO',           airportCode: 'DEN', cityId: '3000009782', cityName: 'Denver, CO' },
+  { label: 'Seattle, WA',          airportCode: 'SEA', cityId: '3000033584', cityName: 'Seattle, WA' },
+  { label: 'Boston, MA',           airportCode: 'BOS', cityId: '3000005765', cityName: 'Boston, MA' },
+  { label: 'London, UK',           airportCode: 'LHR', cityId: '3000015406', cityName: 'London, UK' },
+  { label: 'Paris, France',        airportCode: 'CDG', cityId: '3000023755', cityName: 'Paris, France' },
+  { label: 'Rome, Italy',          airportCode: 'FCO', cityId: '3000031071', cityName: 'Rome, Italy' },
+  { label: 'Barcelona, Spain',     airportCode: 'BCN', cityId: '3000004097', cityName: 'Barcelona, Spain' },
+  { label: 'Lisbon, Portugal',     airportCode: 'LIS', cityId: '3000015476', cityName: 'Lisbon, Portugal' },
+  { label: 'Tokyo, Japan',         airportCode: 'NRT', cityId: '3000037218', cityName: 'Tokyo, Japan' },
+  { label: 'Bali, Indonesia',      airportCode: 'DPS', cityId: '3000004009', cityName: 'Bali, Indonesia' },
+]
+
+const ORIGINS_DATA = [
+  { label: 'New York (EWR)',        airportCode: 'EWR', metroCode: 'NYC' },
+  { label: 'New York (JFK)',        airportCode: 'JFK', metroCode: 'NYC' },
+  { label: 'Los Angeles (LAX)',     airportCode: 'LAX', metroCode: 'LAX' },
+  { label: 'Chicago (ORD)',         airportCode: 'ORD', metroCode: 'CHI' },
+  { label: 'Chicago (MDW)',         airportCode: 'MDW', metroCode: 'CHI' },
+  { label: 'San Francisco (SFO)',   airportCode: 'SFO', metroCode: 'SFO' },
+  { label: 'Miami (MIA)',           airportCode: 'MIA', metroCode: 'MIA' },
+  { label: 'Fort Lauderdale (FLL)', airportCode: 'FLL', metroCode: 'MIA' },
+  { label: 'Dallas (DFW)',          airportCode: 'DFW', metroCode: 'DFW' },
+  { label: 'Dallas (DAL)',          airportCode: 'DAL', metroCode: 'DFW' },
+  { label: 'Houston (IAH)',         airportCode: 'IAH', metroCode: 'HOU' },
+  { label: 'Houston (HOU)',         airportCode: 'HOU', metroCode: 'HOU' },
+  { label: 'Atlanta (ATL)',         airportCode: 'ATL', metroCode: 'ATL' },
+  { label: 'Boston (BOS)',          airportCode: 'BOS', metroCode: 'BOS' },
+  { label: 'Washington DC (DCA)',   airportCode: 'DCA', metroCode: 'WAS' },
+  { label: 'Washington DC (IAD)',   airportCode: 'IAD', metroCode: 'WAS' },
+  { label: 'Seattle (SEA)',         airportCode: 'SEA', metroCode: 'SEA' },
+  { label: 'Denver (DEN)',          airportCode: 'DEN', metroCode: 'DEN' },
+  { label: 'Phoenix (PHX)',         airportCode: 'PHX', metroCode: 'PHX' },
+  { label: 'Minneapolis (MSP)',     airportCode: 'MSP', metroCode: 'MSP' },
+]
+
+app.get(['/api/destinations', '/pkg-itinerary-mvp/api/destinations'], (_req, res) => {
+  res.json({ origins: ORIGINS_DATA, destinations: DESTINATIONS_DATA })
+})
+
 app.post(['/api/packages', '/pkg-itinerary-mvp/api/packages'], express.json(), async (req, res) => {
   log('info', 'Packages request', req.body)
   const result = await fetchPackages(req.body || {}).catch((err) => {
@@ -795,12 +858,12 @@ app.get('/debug/htl-content/:dealId', async (req, res) => {
 // Debug: dump raw stayItem content fields from a live search
 app.post('/debug/stay-content', express.json(), async (req, res) => {
   try {
-    const params = { ...{ originAirport: 'EWR', originMetroCode: 'NYC', destinationAirport: 'CUN', destinationCityId: '3000061781', departDate: '2026-08-15', returnDate: '2026-08-22', travelers: 2 }, ...(req.body || {}) }
+    const params = { ...{ originAirport: 'EWR', originMetroCode: 'NYC', destinationAirport: 'CUN', destinationCityId: '3000061781', destinationCityName: 'Cancun, Mexico', departDate: '2026-08-15', returnDate: '2026-08-22', travelers: 2 }, ...(req.body || {}) }
     const departSeconds = toMidnightUtcSeconds(params.departDate)
     const returnSeconds = toMidnightUtcSeconds(params.returnDate)
     const cacheKey = `${params.originMetroCode}|${params.destinationCityId}|${departSeconds}|${returnSeconds}|${params.travelers}`
     const sessionKey = await getSessionKey({ cacheKey, originMetroCode: params.originMetroCode, destinationCityId: params.destinationCityId, departSeconds, returnSeconds, adults: params.travelers })
-    const json = await unifiedSearch({ sessionKey, originMetroCode: params.originMetroCode, destinationCityId: params.destinationCityId, departSeconds, returnSeconds, adults: params.travelers, rguid: 'debug' })
+    const json = await unifiedSearch({ sessionKey, originMetroCode: params.originMetroCode, destinationCityId: params.destinationCityId, destinationCityName: params.destinationCityName, departSeconds, returnSeconds, adults: params.travelers, rguid: 'debug' })
     const stayItems = json?.body?.componentResponses?.[0]?.stayResponse?.stayItems ?? []
     const sample = stayItems.slice(0, 3).map(item => ({
       itemKey: item.itemKey,
@@ -814,7 +877,7 @@ app.post('/debug/stay-content', express.json(), async (req, res) => {
 
 // Flight-pivot search — reuses same STAY-pivot CRC session, same as what Splunk shows working
 async function fetchFlightOptions(params) {
-  const { originAirport, originMetroCode, destinationAirport, destinationCityId, departDate, returnDate, travelers } = params
+  const { originAirport, originMetroCode, destinationAirport, destinationCityId, destinationCityName, departDate, returnDate, travelers } = params
   const departSeconds = toMidnightUtcSeconds(departDate)
   const returnSeconds = toMidnightUtcSeconds(returnDate)
   const cacheKey = `${originMetroCode}|${destinationCityId}|${departSeconds}|${returnSeconds}|${travelers}`
@@ -826,7 +889,7 @@ async function fetchFlightOptions(params) {
   const usRguid = `fly-pivot-${Date.now()}`
   log('info', 'fly-pivot unified-search request', { rguid: usRguid })
   const json = await unifiedSearchFlyPivot({
-    sessionKey, originAirport, originMetroCode, destinationAirport, destinationCityName: 'Cancun, Mexico', departSeconds, returnSeconds, adults: travelers, rguid: usRguid,
+    sessionKey, originAirport, originMetroCode, destinationAirport, destinationCityName: destinationCityName || 'Cancun, Mexico', departSeconds, returnSeconds, adults: travelers, rguid: usRguid,
   })
 
   const flyItems = json?.body?.componentResponses?.find(c => c.flyResponse)?.flyResponse?.flyItems ?? []
@@ -856,6 +919,7 @@ app.post(['/debug/raw-flights', '/pkg-itinerary-mvp/debug/raw-flights'], express
     const params = {
       originAirport: 'EWR', originMetroCode: 'NYC',
       destinationAirport: 'CUN', destinationCityId: '3000061781',
+      destinationCityName: 'Cancun, Mexico',
       departDate: '2026-08-15', returnDate: '2026-08-22', travelers: 2,
       ...(req.body || {}),
     }
@@ -871,11 +935,12 @@ app.post(['/debug/raw-flights', '/pkg-itinerary-mvp/debug/raw-flights'], express
     await unifiedSearch({
       sessionKey, originMetroCode: params.originMetroCode,
       destinationCityId: params.destinationCityId,
+      destinationCityName: params.destinationCityName,
       departSeconds, returnSeconds, adults: params.travelers, rguid: 'debug-stay-seed',
     })
     const json = await unifiedSearchFlyPivot({
       sessionKey, originAirport: params.originAirport, originMetroCode: params.originMetroCode,
-      destinationAirport: params.destinationAirport, destinationCityName: 'Cancun, Mexico',
+      destinationAirport: params.destinationAirport, destinationCityName: params.destinationCityName,
       departSeconds, returnSeconds, adults: params.travelers, rguid: 'debug-fly-pivot',
     })
     res.json(json)
@@ -890,6 +955,7 @@ app.post(['/debug/raw', '/pkg-itinerary-mvp/debug/raw'], express.json(), async (
     const params = {
       originAirport: 'EWR', originMetroCode: 'NYC',
       destinationAirport: 'CUN', destinationCityId: '3000061781',
+      destinationCityName: 'Cancun, Mexico',
       departDate: '2026-08-15', returnDate: '2026-08-22', travelers: 2,
       ...(req.body || {}),
     }
@@ -904,6 +970,7 @@ app.post(['/debug/raw', '/pkg-itinerary-mvp/debug/raw'], express.json(), async (
     const json = await unifiedSearch({
       sessionKey, originMetroCode: params.originMetroCode,
       destinationCityId: params.destinationCityId,
+      destinationCityName: params.destinationCityName,
       departSeconds, returnSeconds, adults: params.travelers, rguid: 'debug-raw',
     })
     res.json(json)

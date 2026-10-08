@@ -319,7 +319,7 @@ function departureDescription(pkg: NormalizedPackage): string {
 }
 
 function freeDayDescription(pkg: NormalizedPackage): string {
-  const city = cityName(pkg.destination)
+  const city = pkg.destinationCityName || cityName(pkg.destination)
   return pkg.allInclusive
     ? `Explore ${city} or stay in at ${pkg.hotelName}, with meals and drinks included.`
     : `Nothing is booked, so the day is yours to explore ${city}.`
@@ -327,7 +327,7 @@ function freeDayDescription(pkg: NormalizedPackage): string {
 
 export function buildItineraryDays(pkg: NormalizedPackage): ItineraryDay[] {
   const totalDays = Math.max(pkg.nights, 0) + 1
-  const city = cityName(pkg.destination)
+  const city = pkg.destinationCityName || cityName(pkg.destination)
   const arrivalItems = [...flightItem(pkg, pkg.outboundLegs), ...carPickupItem(pkg), checkInItem(pkg)]
   const departureItems = [checkOutItem(pkg), ...carReturnItem(pkg), ...flightItem(pkg, pkg.returnLegs)]
 

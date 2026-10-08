@@ -1,66 +1,112 @@
 import { useEffect, useState } from 'react'
 import type { NormalizedPackage } from '../types'
 
-const SEARCH_PARAMS = {
-  originAirport: 'EWR',
-  originMetroCode: 'NYC',
-  destinationAirport: 'CUN',
-  destinationCityId: '3000061781',
-  departDate: '2026-11-15',
-  returnDate: '2026-11-19',
-  travelers: 2,
+export interface SearchParams {
+  originAirport: string
+  originMetroCode: string
+  destinationAirport: string
+  destinationCityId: string
+  destinationCityName: string
+  departDate: string
+  returnDate: string
+  travelers: number
 }
 
-const CACHE_KEY = `pkg_cache_v5_${JSON.stringify(SEARCH_PARAMS)}`
 const CACHE_TTL_MS = 55 * 60 * 1000
+const CANCUN_CITY_ID = '3000061781'
+const CANCUN_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+
+function cacheTtl(params: SearchParams) {
+  return params.destinationCityId === CANCUN_CITY_ID
+    ? CANCUN_CACHE_TTL_MS
+    : CACHE_TTL_MS
+}
 
 interface CacheData {
   packages: NormalizedPackage[]
   timestamp: number
 }
 
-function readCache(): CacheData | null {
+function cacheKey(params: SearchParams) {
+  return `pkg_cache_v6_${JSON.stringify(params)}`
+}
+
+function readCache(params: SearchParams): CacheData | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY)
+    const raw = localStorage.getItem(cacheKey(params))
     if (!raw) return null
     const data: CacheData = JSON.parse(raw)
-    if (Date.now() - data.timestamp > CACHE_TTL_MS) return null
+    if (Date.now() - data.timestamp > cacheTtl(params)) return null
     return data
   } catch {
     return null
   }
 }
 
-function writeCache(packages: NormalizedPackage[]) {
+function writeCache(params: SearchParams, packages: NormalizedPackage[]) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ packages, timestamp: Date.now() }))
+    localStorage.setItem(cacheKey(params), JSON.stringify({ packages, timestamp: Date.now() }))
   } catch {}
 }
 
-export function clearPackageCache() {
-  localStorage.removeItem(CACHE_KEY)
+export async function prefetchPackages(params: SearchParams): Promise<void> {
+  if (readCache(params)) return
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}api/packages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    if (data.packages?.length) writeCache(params, data.packages)
+  } catch {}
 }
 
-export function usePackages() {
-  const cached = readCache()
-  const [packages, setPackages] = useState<NormalizedPackage[]>(cached?.packages ?? [])
-  const [loading, setLoading] = useState(cached === null)
+export function clearPackageCache(params?: SearchParams) {
+  if (params) {
+    localStorage.removeItem(cacheKey(params))
+  } else {
+    // Clear all v6 cache entries
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i)
+      if (k?.startsWith('pkg_cache_v6_')) localStorage.removeItem(k)
+    }
+  }
+}
+
+export function usePackages(searchParams: SearchParams | null) {
+  const initCached = searchParams ? readCache(searchParams) : null
+  const [packages, setPackages] = useState<NormalizedPackage[]>(initCached?.packages ?? [])
+  const [loading, setLoading] = useState(searchParams !== null && initCached === null)
   const [error, setError] = useState<string | null>(null)
-  const [fromCache, setFromCache] = useState(cached !== null)
+  const [fromCache, setFromCache] = useState(initCached !== null)
+
+  // Stable serialized key — effect re-runs whenever search params actually change
+  const paramsKey = searchParams ? JSON.stringify(searchParams) : null
 
   useEffect(() => {
-    if (cached !== null) return
+    if (!searchParams) return
+
+    const hit = readCache(searchParams)
+    if (hit) {
+      setPackages(hit.packages)
+      setFromCache(true)
+      setLoading(false)
+      return
+    }
 
     let cancelled = false
 
     async function load() {
       setLoading(true)
+      setFromCache(false)
       setError(null)
       try {
         const res = await fetch(`${import.meta.env.BASE_URL}api/packages`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(SEARCH_PARAMS),
+          body: JSON.stringify(searchParams),
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: res.statusText }))
@@ -69,7 +115,7 @@ export function usePackages() {
         const data = await res.json()
         const pkgs: NormalizedPackage[] = data.packages ?? []
         if (!cancelled) {
-          writeCache(pkgs)
+          writeCache(searchParams, pkgs)
           setPackages(pkgs)
           setFromCache(false)
         }
@@ -82,7 +128,8 @@ export function usePackages() {
 
     load()
     return () => { cancelled = true }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey])
 
-  return { packages, loading, error, fromCache, searchParams: SEARCH_PARAMS }
+  return { packages, loading, error, fromCache, searchParams }
 }

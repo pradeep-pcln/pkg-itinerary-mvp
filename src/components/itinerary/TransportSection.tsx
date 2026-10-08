@@ -42,8 +42,8 @@ function CarRow({ car, currencySymbol }: { car: NormalizedRentalCar; currencySym
     `${currencySymbol}${formatAmount(car.totalPrice)} total`,
   ].filter(Boolean).join(' · ')
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-primary-4 bg-neutral-1 p-4">
-      <img src={car.imageUrl} alt={car.vendor} className="h-14 w-24 rounded-lg object-contain" />
+    <div className="flex items-center gap-3 rounded-xl border border-primary-4 bg-neutral-1 p-4">
+      <img src={car.imageUrl} alt={car.vendor} className="h-20 w-32 rounded-lg object-contain" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <Heading as="h4" textStyle="heading6" palette="primary" shade="13">{title}</Heading>
         <Span textStyle="body2" palette="primary" shade="10">{details}</Span>

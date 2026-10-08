@@ -63,6 +63,7 @@ export interface NormalizedPackage {
   // Search context
   origin: string
   destination: string
+  destinationCityName: string
   departDate: string
   returnDate: string
   travelers: number
