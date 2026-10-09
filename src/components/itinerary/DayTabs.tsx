@@ -2,7 +2,8 @@ import { A, Badge, Button, CdnIcon, Disc, Heading, IconButton, Skeleton, Span, T
 import type { DiscProps, TabsValue, ValidGoogleSymbol } from '@pcln/horizon'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { buildItineraryDays, formatLongDate, mergeAiDays } from '../../lib/itinerary'
-import type { ActivityImageResult, AiDay, ItineraryDay, ItineraryItem, ItineraryItemKind } from '../../lib/itinerary'
+import type { ActivityImageResult, AiDay, ItineraryDay, ItineraryItem, ItineraryItemKind, TripStyle } from '../../lib/itinerary'
+import { tripStyleOption } from './ShapeTrip'
 import type { NormalizedPackage } from '../../types'
 
 export const ITEM_ICONS: Record<ItineraryItemKind, ValidGoogleSymbol> = {
@@ -26,9 +27,10 @@ const ITEM_PALETTES: Record<ItineraryItemKind, NonNullable<DiscProps['palette']>
 const TABS_SLOT_CLASS_NAMES = {
   listClass: 'sticky top-0 z-10 bg-neutral-1 pt-2 border-b border-primary-4 [scrollbar-width:none]',
   panelClass: 'pt-5',
+  tabClass: 'flex-none',
 }
 
-function TimelineRow({ item, isLast }: { item: ItineraryItem; isLast: boolean }) {
+function TimelineRow({ item, isLast, tinted }: { item: ItineraryItem; isLast: boolean; tinted: boolean }) {
   return (
     <li className="grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3">
       <Span textStyle="body2" bold palette="primary" shade="10" className="pt-1.5 text-right">{item.time}</Span>
@@ -37,7 +39,7 @@ function TimelineRow({ item, isLast }: { item: ItineraryItem; isLast: boolean })
         {isLast ? null : <span aria-hidden className="absolute top-9 bottom-1 w-0.5 rounded-full bg-primary-4" />}
       </div>
       <div className="pb-4">
-        <div className={`flex items-start gap-3 rounded-xl p-4 ${item.kind === 'flight' ? 'bg-neutral-2' : 'border border-primary-4'}`}>
+        <div className={`flex items-start gap-3 rounded-xl p-4 ${item.kind === 'flight' ? 'bg-neutral-2' : 'border border-primary-4'}${tinted ? ' day-style-edge' : ''}`}>
           <div className="flex flex-1 flex-col gap-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Span textStyle="label" palette="primary" shade="10">{item.categoryLabel}</Span>
@@ -91,6 +93,11 @@ const PLAN_MOTION = (
       50% { opacity: 1; transform: scale(1); }
     }
     .day-plan-in { animation: dayPlanIn 0.4s ease both; }
+    .day-style-edge {
+      border-left-width: 3px !important;
+      border-left-style: solid !important;
+      border-left-color: color-mix(in oklch, var(--shape-accent) 55%, white) !important;
+    }
     .day-plan-dot {
       width: 0.5rem;
       height: 0.5rem;
@@ -190,25 +197,73 @@ const PLAN_MOTION = (
     .day-load-ring { animation: ring 2.4s ease-out infinite; }
     .day-load-core { animation: breathe 2.4s ease-in-out infinite; }
     .day-load-sweep { animation: sweep 2.4s ease-in-out infinite; }
-    @keyframes openDayRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     @keyframes openDayBreathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-    .open-day-row { animation: openDayRise .45s ease both; }
     .open-day-pill { animation: openDayBreathe 3s ease-in-out infinite; }
+    @keyframes dayStyleIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+    .day-style-chip { animation: dayStyleIn .4s ease both; }
+    .day-style-glyph { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
     @media (prefers-reduced-motion: reduce) {
       .day-plan-in, .day-plan-dot,
       .np-wrap, .np-halo, .np-pill, .np-icon, .np-label, .np-star, .np-sheen,
       .day-load-phrase, .day-load-icon, .day-load-star, .day-load-ring, .day-load-core, .day-load-sweep,
-      .open-day-row, .open-day-pill { animation: none; }
+      .open-day-pill, .day-style-chip { animation: none; }
       .day-load-phrase:first-child, .day-load-icon:first-child { opacity: 1; }
     }
   `}</style>
 )
 
-function PlanningDot() {
+function PlanningDot({ accent }: Readonly<{ accent?: string }>) {
   return (
-    <span aria-hidden className="mr-2 flex size-2 shrink-0 text-actionPrimary-8">
+    <span
+      aria-hidden
+      className="mr-2 flex size-2 shrink-0 text-actionPrimary-8"
+      style={accent ? { color: accent } : undefined}
+    >
       <span className="day-plan-dot" />
     </span>
+  )
+}
+
+// Each day tab remounts its panel, so the shared ref limits the pop-in to the first one shown
+function StyleChip({ style, onChange, introPlayed }: Readonly<{
+  style?: TripStyle
+  onChange?: () => void
+  introPlayed: RefObject<boolean>
+}>) {
+  const option = style ? tripStyleOption(style) : null
+  const [animate] = useState(() => !introPlayed.current)
+  useEffect(() => {
+    introPlayed.current = true
+  }, [introPlayed])
+
+  return (
+    <div
+      className={`${animate ? 'day-style-chip ' : ''}flex max-w-full items-center gap-2 rounded-full py-1 pr-1 ${option ? 'pl-1' : 'pl-3'}`}
+      style={{ background: option?.tint ?? '#eaf2ff' }}
+    >
+      {option ? (
+        <>
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-1" style={{ color: option.accent }}>
+            <CdnIcon iconName={option.icon} size="16" className="day-style-glyph text-inherit" />
+          </span>
+          <Span textStyle="body3" palette="primary" shade="10" className="min-w-0 truncate">
+            <Span textStyle="body3" bold palette="primary" shade="13">{option.label}</Span>
+            <span className="max-sm:hidden">{` · ${option.tagline}`}</span>
+          </Span>
+        </>
+      ) : (
+        <Span textStyle="body3" bold palette="primary" shade="13" className="min-w-0 truncate">Set a trip style</Span>
+      )}
+      {onChange ? (
+        <button
+          type="button"
+          className="shrink-0 rounded-full bg-neutral-1 px-3 py-1 text-[13px] font-bold text-actionPrimary-8 transition-colors hover:bg-actionPrimary-1"
+          onClick={onChange}
+        >
+          Change
+        </button>
+      ) : null}
+    </div>
   )
 }
 
@@ -288,14 +343,13 @@ const OPEN_DAY_ROWS = [
 
 function OpenDayOutline() {
   return (
-    <div className="flex flex-col">
+    <div className="day-plan-in flex flex-col">
       {OPEN_DAY_ROWS.map((row, index) => (
         <div
           key={row.label}
-          className="open-day-row grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3"
-          style={{ animationDelay: `${index * 0.1}s` }}
+          className="grid grid-cols-[4.5rem_2rem_minmax(0,1fr)] gap-x-3"
         >
-          <Span textStyle="disclaimer" bold palette="primary" shade="10" className="pt-3 text-right">{row.label}</Span>
+          <Span textStyle="disclaimer" bold palette="primary" shade="10" className="pt-3.5 text-right">{row.label}</Span>
           <div className="relative flex justify-center">
             <span className="relative z-[1] mt-1.5 flex size-8 items-center justify-center rounded-full border-[1.5px] border-dashed border-[#9fb7dc] bg-[#f6faff] text-[#6b86ad]">
               <CdnIcon iconName={row.icon} size="16" className="text-inherit" />
@@ -304,7 +358,7 @@ function OpenDayOutline() {
               <span aria-hidden className="absolute top-10 bottom-[-6px] w-0.5 bg-[repeating-linear-gradient(#c4d8f7_0_4px,transparent_4px_8px)]" />
             )}
           </div>
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border-[1.5px] border-dashed border-[#c4d8f7] bg-[linear-gradient(90deg,#f8fbff,#fff)] px-4 py-3">
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-[20px] border-[1.5px] border-dashed border-[#c4d8f7] bg-[linear-gradient(90deg,#f8fbff,#fff)] px-5 py-3.5">
             <Span textStyle="body2" palette="primary" shade="10">{row.text}</Span>
             <span className="open-day-pill shrink-0 rounded-full bg-[#eaf2ff] px-2.5 py-0.5 text-[12px] font-bold whitespace-nowrap text-[#0068ef]">No rush</span>
           </div>
@@ -394,10 +448,14 @@ interface DayPanelProps {
   onRegenerate: (day: number) => void
   onStep: (delta: number) => void
   newPlanIntroPlayed: RefObject<boolean>
+  tripStyle?: TripStyle
+  onChangeStyle?: () => void
+  styleChipIntroPlayed: RefObject<boolean>
 }
 
 function DayPanel({
   day, isFirst, isLast, isPlanning, initialPlanLoading, isRewriting, anyRewriting, regenMessage, onRegenerate, onStep, newPlanIntroPlayed,
+  tripStyle, onChangeStyle, styleChipIntroPlayed,
 }: Readonly<DayPanelProps>) {
   const hasSuggestions = day.items.some((item) => item.isAiSuggested)
   const showSkeleton = isPlanning || isRewriting
@@ -406,9 +464,14 @@ function DayPanel({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <Span textStyle="body2" bold palette="actionPrimary" shade="8">
-            Day {day.day} · {formatLongDate(day.date)}
-          </Span>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            <Span textStyle="body2" bold palette="actionPrimary" shade="8">
+              Day {day.day} · {formatLongDate(day.date)}
+            </Span>
+            {onChangeStyle ? (
+              <StyleChip style={tripStyle} onChange={onChangeStyle} introPlayed={styleChipIntroPlayed} />
+            ) : null}
+          </div>
           {showNewPlan ? (
             <div className="flex items-center gap-1.5">
               <NewPlanButton
@@ -453,7 +516,7 @@ function DayPanel({
       ) : day.items.length > 0 ? (
         <ol className="day-plan-in flex flex-col">
           {day.items.map((item, i) => (
-            <TimelineRow key={`${item.kind}-${item.title}-${i}`} item={item} isLast={i === day.items.length - 1} />
+            <TimelineRow key={`${item.kind}-${item.title}-${i}`} item={item} isLast={i === day.items.length - 1} tinted={Boolean(tripStyle)} />
           ))}
         </ol>
       ) : null}
@@ -528,6 +591,8 @@ interface DayTabsProps {
   aiLoading: boolean
   plannedDays: number[]
   openDayCopy: boolean
+  tripStyle?: TripStyle
+  onChangeStyle?: () => void
   regeneratingDay: number | null
   regenError: { day: number; message: string } | null
   onRegenerate: (day: number) => void
@@ -561,14 +626,17 @@ function alignDayHeader(root: HTMLElement) {
 
 // Keyed on the package by the parent so the selected day resets per package
 export function DayTabs({
-  pkg, aiDays, aiLoading, plannedDays, openDayCopy, regeneratingDay, regenError, onRegenerate, activityImages,
+  pkg, aiDays, aiLoading, plannedDays, openDayCopy, tripStyle, onChangeStyle, regeneratingDay, regenError, onRegenerate, activityImages,
 }: Readonly<DayTabsProps>) {
   const staticDays = buildItineraryDays(pkg, openDayCopy)
   const days = aiDays && aiDays.length > 0 ? mergeAiDays(staticDays, aiDays, activityImages) : staticDays
-  const [value, setValue] = useState<TabsValue>('1')
+  const [value, setValue] = useState<TabsValue>(() => (
+    plannedDays.length > 0 ? String(Math.min(...plannedDays)) : '1'
+  ))
   const rootRef = useRef<HTMLDivElement>(null)
   const alignedValue = useRef(value)
   const newPlanIntroPlayed = useRef(false)
+  const styleChipIntroPlayed = useRef(false)
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -584,16 +652,35 @@ export function DayTabs({
     alignDayHeader(root)
   }, [value])
 
+  // Tapping the day that is already selected does not change the tab value,
+  // so the effect above never runs. After the drawer reopens at the top, that
+  // tap still needs to bring the day section up.
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    function onClick(event: MouseEvent) {
+      const tab = (event.target as Element | null)?.closest?.('[role="tab"]')
+      if (!(tab instanceof HTMLElement) || !root.contains(tab)) return
+      const tabs = root.querySelectorAll<HTMLElement>('[role="tab"]')
+      const index = Array.prototype.indexOf.call(tabs, tab)
+      if (String(index + 1) !== value) return
+      alignDayHeader(root)
+    }
+    root.addEventListener('click', onClick)
+    return () => root.removeEventListener('click', onClick)
+  }, [value])
+
   function handleStep(delta: number) {
     const nextIndex = Math.min(Math.max(Number(value) - 1 + delta, 0), days.length - 1)
     setValue(String(nextIndex + 1))
   }
 
+  const accent = tripStyle ? tripStyleOption(tripStyle).accent : undefined
   const tabsContent = days.map((d, i) => ({
     value: String(d.day),
     label: `Day ${d.day}`,
     helperText: aiLoading && plannedDays.includes(d.day) ? 'Planning' : d.tabLabel,
-    iconLeft: aiLoading && plannedDays.includes(d.day) ? <PlanningDot /> : undefined,
+    iconLeft: aiLoading && plannedDays.includes(d.day) ? <PlanningDot accent={accent} /> : undefined,
     panelContent: (
       <DayPanel
         day={d}
@@ -607,14 +694,25 @@ export function DayTabs({
         onRegenerate={onRegenerate}
         onStep={handleStep}
         newPlanIntroPlayed={newPlanIntroPlayed}
+        tripStyle={tripStyle}
+        onChangeStyle={onChangeStyle}
+        styleChipIntroPlayed={styleChipIntroPlayed}
       />
     ),
   }))
 
+  const tabSlots = accent
+    ? { ...TABS_SLOT_CLASS_NAMES, indicatorClass: '!bg-[var(--shape-accent)]' }
+    : TABS_SLOT_CLASS_NAMES
+
   return (
-    <section ref={rootRef} aria-label="Day-by-day itinerary">
+    <section
+      ref={rootRef}
+      aria-label="Day-by-day itinerary"
+      style={accent ? { '--shape-accent': accent } as CSSProperties : undefined}
+    >
       {PLAN_MOTION}
-      <Tabs tabsContent={tabsContent} value={value} onValueChange={setValue} slotClassNames={TABS_SLOT_CLASS_NAMES} />
+      <Tabs tabsContent={tabsContent} value={value} onValueChange={setValue} slotClassNames={tabSlots} />
     </section>
   )
 }
