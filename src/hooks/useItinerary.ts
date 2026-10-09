@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AiDay, ShapeChoice } from '../lib/itinerary'
+import { TRIP_STYLES } from '../lib/itinerary'
+import type { AiDay, ShapeChoice, TripStyle } from '../lib/itinerary'
 import type { NormalizedPackage } from '../types'
 
 interface FetchState {
@@ -10,6 +11,51 @@ interface FetchState {
 }
 
 const sessionCache = new Map<string, AiDay[]>()
+const NO_PLANS: AiDay[] = []
+const planListeners = new Set<() => void>()
+
+function notifyPlanListeners() {
+  for (const listener of planListeners) listener()
+}
+
+export function subscribeItineraryPlans(onStoreChange: () => void) {
+  planListeners.add(onStoreChange)
+  return () => { planListeners.delete(onStoreChange) }
+}
+
+const NO_PLAN = { style: null as TripStyle | null, days: NO_PLANS }
+const planSnapshots = new Map<string, { style: TripStyle | null; days: AiDay[] }>()
+
+function styleFromCacheKey(key: string, prefix: string): TripStyle | null {
+  const rest = key.slice(prefix.length)
+  const nonceAt = rest.lastIndexOf('|')
+  const daysAt = rest.lastIndexOf('|', nonceAt - 1)
+  if (daysAt < 0) return null
+  const style = rest.slice(0, daysAt)
+  return (TRIP_STYLES as readonly string[]).includes(style) ? style as TripStyle : null
+}
+
+export function cachedItineraryPlan(pkg: NormalizedPackage): { style: TripStyle | null; days: AiDay[] } {
+  const prefix = packagePrefix(pkg)
+  let bestNonce = -1
+  let bestKey = ''
+  for (const [key, days] of sessionCache) {
+    if (!key.startsWith(prefix) || days.length === 0) continue
+    const nonce = Number(key.slice(key.lastIndexOf('|') + 1))
+    const rank = Number.isFinite(nonce) ? nonce : 0
+    if (rank >= bestNonce) {
+      bestNonce = rank
+      bestKey = key
+    }
+  }
+  if (!bestKey) return NO_PLAN
+  const days = sessionCache.get(bestKey) ?? NO_PLANS
+  const existing = planSnapshots.get(bestKey)
+  if (existing?.days === days) return existing
+  const next = { style: styleFromCacheKey(bestKey, prefix), days }
+  planSnapshots.set(bestKey, next)
+  return next
+}
 
 function packagePrefix(pkg: NormalizedPackage): string {
   const month = pkg.departDate.slice(0, 7)
@@ -26,9 +72,14 @@ export function hasItineraryPlan(pkg: NormalizedPackage, shape: ShapeChoice, pla
 
 export function forgetItineraryPlans(pkg: NormalizedPackage) {
   const prefix = packagePrefix(pkg)
+  let removed = false
   for (const key of sessionCache.keys()) {
-    if (key.startsWith(prefix)) sessionCache.delete(key)
+    if (key.startsWith(prefix)) {
+      sessionCache.delete(key)
+      removed = true
+    }
   }
+  if (removed) notifyPlanListeners()
 }
 
 function requestBody(pkg: NormalizedPackage, shape: ShapeChoice, extra: Record<string, unknown> = {}) {
@@ -94,6 +145,7 @@ export function useItinerary(pkg: NormalizedPackage | null, shape: ShapeChoice |
       .then(({ days }) => {
         // Keep a plan that finishes after the drawer closes so reopening shows it
         sessionCache.set(requestKey, days)
+        notifyPlanListeners()
         if (cancelled) return
         setFetchState({ key: requestKey, aiDays: days, loading: false, error: null })
       })
@@ -137,6 +189,7 @@ export function useItinerary(pkg: NormalizedPackage | null, shape: ShapeChoice |
         return
       }
       sessionCache.set(requestKey, replaceSavedDay(current, { ...replacement, day }))
+      notifyPlanListeners()
       if (keyRef.current === requestKey) setVersion((version) => version + 1)
     } catch {
       if (requestId.current === id) setRegenError({ day, message: 'Could not write a new plan. Try again.' })
