@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AiDay } from '../lib/itinerary'
+import type { AiDay, ShapeChoice } from '../lib/itinerary'
 import type { NormalizedPackage } from '../types'
 
 interface FetchState {
@@ -11,19 +11,21 @@ interface FetchState {
 
 const sessionCache = new Map<string, AiDay[]>()
 
-function cacheKey(pkg: NormalizedPackage): string {
+function cacheKey(pkg: NormalizedPackage, shape: ShapeChoice): string {
   const month = pkg.departDate.slice(0, 7)
-  return `${pkg.destination}|${pkg.hotelName.toLowerCase().trim()}|${pkg.nights}|${pkg.allInclusive}|${month}`
+  return `${pkg.destination}|${pkg.hotelName.toLowerCase().trim()}|${pkg.nights}|${pkg.allInclusive}|${month}|${shape.style}|${shape.days.join(',')}`
 }
 
-function requestBody(pkg: NormalizedPackage, extra: Record<string, unknown> = {}) {
+function requestBody(pkg: NormalizedPackage, shape: ShapeChoice, extra: Record<string, unknown> = {}) {
   return {
     destinationCityId: '3000061781',
-    destinationCity: cityName(pkg.destination),
+    destinationCity: pkg.destinationCityName || cityName(pkg.destination),
     hotelName: pkg.hotelName,
     nights: pkg.nights,
     allInclusive: pkg.allInclusive,
     departDate: pkg.departDate,
+    style: shape.style,
+    days: shape.days,
     ...extra,
   }
 }
@@ -36,8 +38,8 @@ function replaceSavedDay(days: AiDay[], day: AiDay): AiDay[] {
   return next
 }
 
-export function useItinerary(pkg: NormalizedPackage | null) {
-  const key = pkg ? cacheKey(pkg) : null
+export function useItinerary(pkg: NormalizedPackage | null, shape: ShapeChoice | null) {
+  const key = pkg && shape ? cacheKey(pkg, shape) : null
   const [fetchState, setFetchState] = useState<FetchState | null>(null)
   const [regeneratingDay, setRegeneratingDay] = useState<number | null>(null)
   const [regenError, setRegenError] = useState<{ day: number; message: string } | null>(null)
@@ -55,7 +57,7 @@ export function useItinerary(pkg: NormalizedPackage | null) {
   }, [key])
 
   useEffect(() => {
-    if (!pkg || !key) return
+    if (!pkg || !shape || !key || shape.days.length === 0) return
     if (sessionCache.has(key)) return
 
     const requestKey = key
@@ -65,7 +67,7 @@ export function useItinerary(pkg: NormalizedPackage | null) {
     fetch('/pkg-itinerary-mvp/api/itinerary', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody(pkg)),
+      body: JSON.stringify(requestBody(pkg, shape)),
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -86,12 +88,11 @@ export function useItinerary(pkg: NormalizedPackage | null) {
       })
 
     return () => { cancelled = true }
-  }, [key, pkg])
+  }, [key, pkg, shape])
 
   async function regenerateDay(day: number) {
-    if (!pkg || !key || inFlight.current) return
-    const current = sessionCache.get(key)
-    if (!current) return
+    if (!pkg || !shape || !key || inFlight.current) return
+    const current = sessionCache.get(key) ?? []
 
     const id = requestId.current + 1
     requestId.current = id
@@ -111,7 +112,7 @@ export function useItinerary(pkg: NormalizedPackage | null) {
       const res = await fetch('/pkg-itinerary-mvp/api/itinerary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody(pkg, { regenerateDay: day, avoidDays })),
+        body: JSON.stringify(requestBody(pkg, shape, { regenerateDay: day, avoidDays })),
       })
       const body = await res.json().catch(() => ({})) as { days?: AiDay[]; error?: string }
       const replacement = body.days?.find((entry) => entry.day === day) ?? body.days?.[0]
@@ -131,13 +132,17 @@ export function useItinerary(pkg: NormalizedPackage | null) {
     }
   }
 
-  if (!pkg || !key) {
+  if (!pkg || !shape || !key) {
     return { aiDays: null, loading: false, error: null, regeneratingDay: null, regenError: null, regenerateDay }
   }
 
   const cached = sessionCache.get(key)
   if (cached) {
     return { aiDays: cached, loading: false, error: null, regeneratingDay, regenError, regenerateDay }
+  }
+
+  if (shape.days.length === 0) {
+    return { aiDays: [], loading: false, error: null, regeneratingDay, regenError, regenerateDay }
   }
 
   if (!fetchState || fetchState.key !== key) {

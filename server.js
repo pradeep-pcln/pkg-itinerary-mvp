@@ -1175,21 +1175,41 @@ function getExternal(url) {
 const ITINERARY_TTL_MS = 24 * 60 * 60 * 1000
 const itineraryCache = new Map()
 
-function buildItineraryCacheKey({ destinationCityId, nights, hotelName, allInclusive, departDate }) {
+function buildItineraryCacheKey({ destinationCityId, nights, hotelName, allInclusive, departDate, style, days }) {
   const norm = hotelName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   const month = departDate.slice(0, 7) // "2026-08" — same season regardless of exact date
-  return `${destinationCityId}|${nights}|${norm}|${allInclusive}|${month}`
+  return `${destinationCityId}|${nights}|${norm}|${allInclusive}|${month}|${style}|${days.join(',')}`
+}
+
+const TRIP_STYLE_GUIDANCE = {
+  'Relaxed': 'favor a slower pace, flexible mornings, wellness, and time to unwind',
+  'Food & culture': 'favor local dining, markets, neighborhoods, museums, and cultural sites',
+  'Sightseeing': 'favor iconic landmarks, scenic viewpoints, and efficient routes between highlights',
+  'Family-friendly': 'favor easy logistics, broadly appealing activities, and age-friendly pacing',
+  'Nightlife': 'favor later starts, evening entertainment, music, and lively dining areas',
+  'Balanced': 'balance sightseeing, local food, relaxation, and evening options',
+}
+const TRIP_STYLES = new Set(Object.keys(TRIP_STYLE_GUIDANCE))
+
+function cleanPlanDays(raw, nights) {
+  const available = Array.from({ length: Math.max(Number(nights) - 1, 0) }, (_, index) => index + 2)
+  if (raw === undefined) return available
+  if (!Array.isArray(raw)) return null
+  if (raw.some((day) => !Number.isInteger(day) || day < 2 || day > Number(nights))) return null
+  return [...new Set(raw)].sort((a, b) => a - b)
 }
 
 // --- Prompt builder ---
 // Asks GPT for the free middle days only: days 2 through `nights` (i.e. nights-1 free days).
 // Day 1 (arrival) and Day nights+1 (departure) are fixed and handled by the frontend.
-function buildItineraryPrompt({ destinationCity, hotelName, nights, allInclusive, departDate }) {
+function buildItineraryPrompt({ destinationCity, hotelName, allInclusive, departDate, style, days }) {
   const month = new Date(`${departDate}T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })
-  const freeDays = nights - 1 // days 2 through nights
+  const freeDays = days.length
+  const dayList = days.join(', ')
   const inclusiveNote = allInclusive
     ? 'The hotel is all-inclusive, so meals at the hotel require no travel.'
     : 'The hotel is not all-inclusive; feel free to recommend local dining.'
+  const styleNote = `Trip style: ${style} — ${TRIP_STYLE_GUIDANCE[style]}.`
 
   const systemPrompt = `You are a travel itinerary expert. Respond ONLY with a valid JSON object — no prose, no markdown, no code fences.
 
@@ -1214,7 +1234,7 @@ Schema:
 }
 
 Rules (violations cause rejection):
-- Generate exactly ${freeDays} day objects, numbered ${2} through ${nights}.
+- Generate exactly ${freeDays} day objects for these day numbers only: ${dayList}.
 - Every field listed in the schema must be present and non-empty.
 - Do NOT include any prices, costs, fees, rates, dollar amounts, or currency symbols anywhere.
 - Do NOT include booking URLs, affiliate links, or commercial recommendations.
@@ -1224,17 +1244,19 @@ Rules (violations cause rejection):
 Hotel: ${hotelName}
 Trip month: ${month}
 ${inclusiveNote}
+${styleNote}
 
-Create a day-by-day itinerary for the ${freeDays} free middle days of this trip (day 2 through day ${nights}).`
+Create a day-by-day itinerary for the selected middle days: ${dayList}.`
 
   return { systemPrompt, userPrompt }
 }
 
-function buildSingleDayPrompt({ destinationCity, hotelName, allInclusive, departDate, day, avoidDays }) {
+function buildSingleDayPrompt({ destinationCity, hotelName, allInclusive, departDate, day, avoidDays, style }) {
   const month = new Date(`${departDate}T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })
   const inclusiveNote = allInclusive
     ? 'The hotel is all-inclusive, so meals at the hotel require no travel.'
     : 'The hotel is not all-inclusive; feel free to recommend local dining.'
+  const styleNote = `Trip style: ${style} — ${TRIP_STYLE_GUIDANCE[style]}.`
   const avoid = avoidDays.length > 0
     ? avoidDays.map((other) => `Day ${other.day}: ${other.title}. Activities: ${other.items.join(', ') || 'none'}`).join('\n')
     : 'None.'
@@ -1273,6 +1295,7 @@ Rules (violations cause rejection):
 Hotel: ${hotelName}
 Trip month: ${month}
 ${inclusiveNote}
+${styleNote}
 
 Write a new plan for day ${day} only.
 Do not repeat these existing days:
@@ -1443,9 +1466,25 @@ app.post(
       return res.status(400).json({ error: 'missing_fields', days: [] })
     }
 
-    const cacheKey = buildItineraryCacheKey({ destinationCityId: destinationCityId ?? '', nights, hotelName, allInclusive: !!allInclusive, departDate })
+    const style = req.body?.style === undefined ? 'Balanced' : req.body.style
+    if (typeof style !== 'string' || !TRIP_STYLES.has(style)) {
+      return res.status(400).json({ error: 'invalid_style', days: [] })
+    }
+    const days = cleanPlanDays(req.body?.days, nights)
+    if (!days) return res.status(400).json({ error: 'invalid_days', days: [] })
+
+    const cacheKey = buildItineraryCacheKey({
+      destinationCityId: destinationCityId ?? '',
+      nights,
+      hotelName,
+      allInclusive: !!allInclusive,
+      departDate,
+      style,
+      days,
+    })
     const regenerateDay = Number(req.body?.regenerateDay)
     const isSingleDay = Number.isInteger(regenerateDay) && regenerateDay >= 2 && regenerateDay <= Number(nights)
+    if (!isSingleDay && days.length === 0) return res.json({ days: [], cached: false })
     const cached = itineraryCache.get(cacheKey)
     if (!isSingleDay && cached && Date.now() < cached.expiresAt) {
       log('info', 'itinerary cache hit', { cacheKey })
@@ -1453,7 +1492,7 @@ app.post(
     }
 
     log('info', isSingleDay ? 'itinerary day regenerate — skipping saved week' : 'itinerary cache miss — calling OpenAI', {
-      destinationCity, hotelName, nights, ...(isSingleDay ? { day: regenerateDay } : {}),
+      destinationCity, hotelName, nights, style, days, ...(isSingleDay ? { day: regenerateDay } : {}),
     })
     const start = Date.now()
 
@@ -1467,6 +1506,7 @@ app.post(
             destinationCity, hotelName, nights, allInclusive: !!allInclusive, departDate,
             day: regenerateDay,
             avoidDays: [...avoidDays, ...extraAvoid],
+            style,
           })
           const raw = await callOpenAI(systemPrompt, userPrompt, { temperature: 0.9 })
           const validated = validateItineraryResponse(raw)
@@ -1485,14 +1525,25 @@ app.post(
         return res.json({ days: [replacement], cached: false })
       }
 
-      const { systemPrompt, userPrompt } = buildItineraryPrompt({ destinationCity, hotelName, nights, allInclusive: !!allInclusive, departDate })
+      const { systemPrompt, userPrompt } = buildItineraryPrompt({
+        destinationCity,
+        hotelName,
+        allInclusive: !!allInclusive,
+        departDate,
+        style,
+        days,
+      })
       const raw = await callOpenAI(systemPrompt, userPrompt)
       const validated = validateItineraryResponse(raw)
+      const selectedDays = validated.days.filter((day) => days.includes(day.day))
+      if (selectedDays.length !== days.length || days.some((day) => !selectedDays.some((entry) => entry.day === day))) {
+        throw new ValidationError('Response did not include every selected day')
+      }
 
-      itineraryCache.set(cacheKey, { days: validated.days, expiresAt: Date.now() + ITINERARY_TTL_MS })
-      log('info', 'itinerary generated', { durationMs: Date.now() - start, days: validated.days.length })
+      itineraryCache.set(cacheKey, { days: selectedDays, expiresAt: Date.now() + ITINERARY_TTL_MS })
+      log('info', 'itinerary generated', { durationMs: Date.now() - start, days: selectedDays.length })
 
-      return res.json({ days: validated.days, cached: false })
+      return res.json({ days: selectedDays, cached: false })
     } catch (err) {
       log('error', 'itinerary generation failed', { error: err.message })
       return res.json({ error: 'generation_failed', days: [] })

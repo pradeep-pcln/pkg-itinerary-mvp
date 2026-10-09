@@ -1,9 +1,10 @@
 import { A, Button, Drawer, Heading, Price, Span } from '@pcln/horizon'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useActivityImages } from '../../hooks/useActivityImages'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { useItinerary } from '../../hooks/useItinerary'
 import { bookUrl, cityName, formatAmount, travelersLabel, tripMeta, tripTitle } from '../../lib/itinerary'
+import type { ShapeChoice } from '../../lib/itinerary'
 import type { NormalizedPackage } from '../../types'
 import { DayTabs } from './DayTabs'
 import { DrawerHero } from './DrawerHero'
@@ -11,6 +12,7 @@ import { HotelSection } from './HotelSection'
 import { IncludesExcludes } from './IncludesExcludes'
 import { PriceBreakdown } from './PriceBreakdown'
 import { ShareTripBody, ShareTripFooter, ShareTripHeader, useShareTrip } from './ShareTrip'
+import { ShapeTrip } from './ShapeTrip'
 import { TransportSection } from './TransportSection'
 import { TripSummary } from './TripSummary'
 
@@ -65,10 +67,17 @@ interface ItineraryDrawerProps {
 export function ItineraryDrawer({ pkg, open, onOpenChange }: Readonly<ItineraryDrawerProps>) {
   const isDesktop = useIsDesktop()
   const title = tripTitle(pkg)
-  const { aiDays, loading: aiLoading, regeneratingDay, regenError, regenerateDay } = useItinerary(open ? pkg : null)
+  const packageKey = String(pkg.proposalIndex)
+  const totalDays = Math.max(pkg.nights, 0) + 1
+  const [shapeState, setShapeState] = useState<{ packageKey: string; choice: ShapeChoice } | null>(null)
+  const shape = shapeState?.packageKey === packageKey ? shapeState.choice : null
+  const effectiveShape = shape ?? (totalDays <= 2 ? { style: 'Balanced', days: [] } satisfies ShapeChoice : null)
+  const { aiDays, loading: aiLoading, regeneratingDay, regenError, regenerateDay } = useItinerary(open ? pkg : null, effectiveShape)
   const activityImages = useActivityImages(aiDays, cityName(pkg.destination))
   const share = useShareTrip(pkg, aiDays, activityImages)
   const [sharing, setSharing] = useState(false)
+  const daysRef = useRef<HTMLDivElement>(null)
+  const pendingDayScroll = useRef(false)
 
   function closeShare() {
     setSharing(false)
@@ -76,9 +85,33 @@ export function ItineraryDrawer({ pkg, open, onOpenChange }: Readonly<ItineraryD
   }
 
   function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen) closeShare()
+    if (!nextOpen) {
+      closeShare()
+      setShapeState(null)
+    }
     onOpenChange(nextOpen)
   }
+
+  function handleCreate(choice: ShapeChoice) {
+    pendingDayScroll.current = true
+    setShapeState({ packageKey, choice })
+  }
+
+  useLayoutEffect(() => {
+    if (!pendingDayScroll.current || !effectiveShape) return
+    const node = daysRef.current
+    if (!node) return
+    pendingDayScroll.current = false
+    let scroller = node.parentElement
+    while (scroller) {
+      const { overflowY } = getComputedStyle(scroller)
+      if ((overflowY === 'auto' || overflowY === 'scroll') && scroller.scrollHeight > scroller.clientHeight + 1) break
+      scroller = scroller.parentElement
+    }
+    if (!scroller) return
+    const delta = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: 'auto' })
+  }, [effectiveShape])
 
   return (
     <Drawer
@@ -99,17 +132,23 @@ export function ItineraryDrawer({ pkg, open, onOpenChange }: Readonly<ItineraryD
         <div className="px-4 pt-4 pb-6 lg:px-6">
           <DrawerHero pkg={pkg} />
         </div>
-        <div className="px-4 pb-8 lg:px-6">
-          <DayTabs
-            key={pkg.proposalIndex}
-            pkg={pkg}
-            aiDays={aiDays}
-            aiLoading={aiLoading}
-            regeneratingDay={regeneratingDay}
-            regenError={regenError}
-            onRegenerate={regenerateDay}
-            activityImages={activityImages}
-          />
+        <div ref={daysRef} className="px-4 pb-8 lg:px-6">
+          {effectiveShape ? (
+            <DayTabs
+              key={pkg.proposalIndex}
+              pkg={pkg}
+              aiDays={aiDays}
+              aiLoading={aiLoading}
+              plannedDays={effectiveShape.days}
+              openDayCopy={totalDays > 2}
+              regeneratingDay={regeneratingDay}
+              regenError={regenError}
+              onRegenerate={regenerateDay}
+              activityImages={activityImages}
+            />
+          ) : (
+            <ShapeTrip key={pkg.proposalIndex} totalDays={totalDays} onCreate={handleCreate} />
+          )}
         </div>
         <div className="flex flex-col gap-8 bg-neutral-2 px-4 py-8 lg:px-6">
           <HotelSection pkg={pkg} />

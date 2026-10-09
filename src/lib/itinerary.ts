@@ -199,6 +199,14 @@ export interface ActivityImageResult {
   attribution: ActivityAttribution | null
 }
 
+export const TRIP_STYLES = ['Relaxed', 'Food & culture', 'Sightseeing', 'Family-friendly', 'Nightlife', 'Balanced'] as const
+export type TripStyle = typeof TRIP_STYLES[number]
+
+export interface ShapeChoice {
+  style: TripStyle
+  days: number[]
+}
+
 export interface ItineraryItem {
   kind: ItineraryItemKind
   // Empty when the time isn't known (car and hotel times are search defaults, not real times)
@@ -318,14 +326,15 @@ function departureDescription(pkg: NormalizedPackage): string {
   ])
 }
 
-function freeDayDescription(pkg: NormalizedPackage): string {
+function freeDayDescription(pkg: NormalizedPackage, openDayCopy: boolean): string {
   const city = pkg.destinationCityName || cityName(pkg.destination)
+  if (openDayCopy) return "Nothing's planned yet, and that's okay. Wander at your own pace, or tap Plan day and we'll shape it around your trip."
   return pkg.allInclusive
     ? `Explore ${city} or stay in at ${pkg.hotelName}, with meals and drinks included.`
     : `Nothing is booked, so the day is yours to explore ${city}.`
 }
 
-export function buildItineraryDays(pkg: NormalizedPackage): ItineraryDay[] {
+export function buildItineraryDays(pkg: NormalizedPackage, openDayCopy = false): ItineraryDay[] {
   const totalDays = Math.max(pkg.nights, 0) + 1
   const city = pkg.destinationCityName || cityName(pkg.destination)
   const arrivalItems = [...flightItem(pkg, pkg.outboundLegs), ...carPickupItem(pkg), checkInItem(pkg)]
@@ -349,7 +358,15 @@ export function buildItineraryDays(pkg: NormalizedPackage): ItineraryDay[] {
     if (isLast) {
       return { day, date, tabLabel: 'Departure', title: 'Check out · fly home', description: departureDescription(pkg), items: departureItems, isFreeDay: false }
     }
-    return { day, date, tabLabel: 'Free day', title: `Free day in ${city}`, description: freeDayDescription(pkg), items: mealItem(pkg), isFreeDay: true }
+    return {
+      day,
+      date,
+      tabLabel: openDayCopy ? 'Your day' : 'Free day',
+      title: openDayCopy ? `${city.split(',')[0].trim()}, your way` : `Free day in ${city}`,
+      description: freeDayDescription(pkg, openDayCopy),
+      items: openDayCopy ? [] : mealItem(pkg),
+      isFreeDay: true,
+    }
   })
 }
 
