@@ -652,6 +652,24 @@ export function DayTabs({
     alignDayHeader(root)
   }, [value])
 
+  // Tapping the day that is already selected does not change the tab value,
+  // so the effect above never runs. After the drawer reopens at the top, that
+  // tap still needs to bring the day section up.
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    function onClick(event: MouseEvent) {
+      const tab = (event.target as Element | null)?.closest?.('[role="tab"]')
+      if (!(tab instanceof HTMLElement) || !root.contains(tab)) return
+      const tabs = root.querySelectorAll<HTMLElement>('[role="tab"]')
+      const index = Array.prototype.indexOf.call(tabs, tab)
+      if (String(index + 1) !== value) return
+      alignDayHeader(root)
+    }
+    root.addEventListener('click', onClick)
+    return () => root.removeEventListener('click', onClick)
+  }, [value])
+
   function handleStep(delta: number) {
     const nextIndex = Math.min(Math.max(Number(value) - 1 + delta, 0), days.length - 1)
     setValue(String(nextIndex + 1))
