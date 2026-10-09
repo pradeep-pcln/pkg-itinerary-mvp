@@ -11,9 +11,24 @@ interface FetchState {
 
 const sessionCache = new Map<string, AiDay[]>()
 
-function cacheKey(pkg: NormalizedPackage, shape: ShapeChoice): string {
+function packagePrefix(pkg: NormalizedPackage): string {
   const month = pkg.departDate.slice(0, 7)
-  return `${pkg.destination}|${pkg.hotelName.toLowerCase().trim()}|${pkg.nights}|${pkg.allInclusive}|${month}|${shape.style}|${shape.days.join(',')}`
+  return `${pkg.destination}|${pkg.hotelName.toLowerCase().trim()}|${pkg.nights}|${pkg.allInclusive}|${month}|`
+}
+
+function cacheKey(pkg: NormalizedPackage, shape: ShapeChoice, planNonce: number): string {
+  return `${packagePrefix(pkg)}${shape.style}|${shape.days.join(',')}|${planNonce}`
+}
+
+export function hasItineraryPlan(pkg: NormalizedPackage, shape: ShapeChoice, planNonce: number): boolean {
+  return (sessionCache.get(cacheKey(pkg, shape, planNonce))?.length ?? 0) > 0
+}
+
+export function forgetItineraryPlans(pkg: NormalizedPackage) {
+  const prefix = packagePrefix(pkg)
+  for (const key of sessionCache.keys()) {
+    if (key.startsWith(prefix)) sessionCache.delete(key)
+  }
 }
 
 function requestBody(pkg: NormalizedPackage, shape: ShapeChoice, extra: Record<string, unknown> = {}) {
@@ -38,8 +53,8 @@ function replaceSavedDay(days: AiDay[], day: AiDay): AiDay[] {
   return next
 }
 
-export function useItinerary(pkg: NormalizedPackage | null, shape: ShapeChoice | null) {
-  const key = pkg && shape ? cacheKey(pkg, shape) : null
+export function useItinerary(pkg: NormalizedPackage | null, shape: ShapeChoice | null, planNonce = 0) {
+  const key = pkg && shape ? cacheKey(pkg, shape, planNonce) : null
   const [fetchState, setFetchState] = useState<FetchState | null>(null)
   const [regeneratingDay, setRegeneratingDay] = useState<number | null>(null)
   const [regenError, setRegenError] = useState<{ day: number; message: string } | null>(null)
@@ -77,8 +92,9 @@ export function useItinerary(pkg: NormalizedPackage | null, shape: ShapeChoice |
         return res.json() as Promise<{ days: AiDay[] }>
       })
       .then(({ days }) => {
-        if (cancelled) return
+        // Keep a plan that finishes after the drawer closes so reopening shows it
         sessionCache.set(requestKey, days)
+        if (cancelled) return
         setFetchState({ key: requestKey, aiDays: days, loading: false, error: null })
       })
       .catch((err: unknown) => {

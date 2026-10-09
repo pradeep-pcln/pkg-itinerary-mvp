@@ -84,7 +84,7 @@ Add images to AI-suggested activities using Google Places:
 - Day-by-day section shows a **loading skeleton** until AI content resolves
 - Day tabs: Arrival / Day 2 … Day N-1 / Departure — populated from the AI response
 - Middle days (`isFreeDay: true`) replace the generic "Free day" placeholder with AI-generated timeline items + activity images
-- Every AI-sourced item is **clearly labeled "Suggested — not included"** with no price and no booking CTA
+- Every AI-sourced item is **clearly labeled "Suggested - not included"** with no price and no booking CTA
 
 ---
 
