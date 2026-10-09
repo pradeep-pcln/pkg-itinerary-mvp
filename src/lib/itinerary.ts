@@ -573,7 +573,7 @@ export function bookUrl(pkg: NormalizedPackage): string {
     // TODO: confirm AHC (air + hotel + car) against QA before shipping
     'package-type-code': pkg.car ? 'AHC' : 'AH',
   })
-  return `https://qaa.priceline.com/shop/search/?${params}`
+  return `https://www.priceline.com/shop/search/?${params}`
 }
 
 export function perPersonPrice(pkg: NormalizedPackage): number {

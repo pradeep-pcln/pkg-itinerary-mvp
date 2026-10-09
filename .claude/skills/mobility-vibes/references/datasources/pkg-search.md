@@ -55,7 +55,7 @@ function pkgSearchUrl(
     'num-adults': String(travelers),
     'package-type-code': 'AH',
   })
-  return `https://qaa.priceline.com/shop/search/?${params}`
+  return `https://www.priceline.com/shop/search/?${params}`
 }
 ```
 

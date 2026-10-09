@@ -1,4 +1,4 @@
-import { A, Badge, Button, CdnIcon, Disc, Heading, IconButton, Skeleton, Span, Tabs, Tooltip } from '@pcln/horizon'
+import { A, Button, CdnIcon, Disc, Heading, IconButton, Skeleton, Span, Tabs, Tooltip } from '@pcln/horizon'
 import type { DiscProps, TabsValue, ValidGoogleSymbol } from '@pcln/horizon'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { buildItineraryDays, formatLongDate, mergeAiDays } from '../../lib/itinerary'
@@ -43,11 +43,6 @@ function TimelineRow({ item, isLast, tinted }: { item: ItineraryItem; isLast: bo
           <div className="flex flex-1 flex-col gap-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Span textStyle="label" palette="primary" shade="10">{item.categoryLabel}</Span>
-              {item.isAiSuggested ? (
-                <Badge palette="neutral" emphasis="medium" size="sm">Suggested — not included</Badge>
-              ) : (
-                <Badge palette="success" emphasis="medium" size="sm">Included</Badge>
-              )}
             </div>
             <Heading as="h5" textStyle="heading6" palette="primary" shade="13">{item.title}</Heading>
             {item.description ? <Span textStyle="body2" palette="primary" shade="10">{item.description}</Span> : null}
@@ -554,7 +549,7 @@ function DayPanel({
                 const card = (
                   <div className="flex w-40 flex-none flex-col overflow-hidden rounded-xl border border-primary-4 transition-shadow hover:shadow-md sm:w-48">
                     <img src={item.imageUrl!} alt={item.title} className="h-[120px] w-full object-cover" />
-                    <div className="p-2">
+                    <div className="flex h-[48px] items-start p-2">
                       <Span textStyle="body2" bold palette="primary" shade="13" className="line-clamp-2">{item.title}</Span>
                     </div>
                   </div>
@@ -621,7 +616,7 @@ function alignDayHeader(root: HTMLElement) {
   if (!scroller) return
   const delta = root.getBoundingClientRect().top - scroller.getBoundingClientRect().top
   if (Math.abs(delta) <= 1) return
-  scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: delta < 0 ? 'auto' : 'smooth' })
+  scroller.scrollTo({ top: scroller.scrollTop + delta, behavior: 'auto' })
 }
 
 // Keyed on the package by the parent so the selected day resets per package
@@ -650,6 +645,10 @@ export function DayTabs({
     if (alignedValue.current === value) return
     alignedValue.current = value
     alignDayHeader(root)
+    // Move focus into the new panel so keyboard/screen-reader users aren't left on <body>
+    const panel = root.querySelector<HTMLElement>('[role="tabpanel"]')
+    const focusTarget = panel?.querySelector<HTMLElement>('button, [href], [tabindex="0"]')
+    focusTarget?.focus({ preventScroll: true })
   }, [value])
 
   // Tapping the day that is already selected does not change the tab value,
