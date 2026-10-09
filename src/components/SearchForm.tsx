@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Button, Counter, DatePicker, Select } from '@pcln/horizon'
+import type { DateRange } from '@pcln/horizon'
 import { DESTINATIONS, ORIGINS } from '../lib/destinations'
 import type { SearchParams } from '../hooks/usePackages'
 import { clearPackageCache } from '../hooks/usePackages'
@@ -8,51 +10,31 @@ interface SearchFormProps {
   onSearch: (params: SearchParams) => void
 }
 
-const selectStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: '#fff',
-  fontFamily: "'Montserrat', Arial, sans-serif",
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: 'pointer',
-  outline: 'none',
-  padding: 0,
-  // Force white text for option elements (browser override via CSS class)
+function dateToStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
-const inputStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: '#fff',
-  fontFamily: "'Montserrat', Arial, sans-serif",
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: 'pointer',
-  outline: 'none',
-  padding: 0,
-  width: 96,
-  colorScheme: 'dark',
-}
-
-const pillStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  background: 'rgba(255,255,255,0.1)',
-  border: '1px solid rgba(255,255,255,0.15)',
-  borderRadius: 8,
-  padding: '8px 14px',
+function strToDate(s: string): Date {
+  return new Date(`${s}T12:00:00`)
 }
 
 export function SearchForm({ defaultParams, onSearch }: SearchFormProps) {
   const [originCode, setOriginCode] = useState(defaultParams.originAirport)
   const [destCode, setDestCode] = useState(defaultParams.destinationAirport)
-  const [departDate, setDepartDate] = useState(defaultParams.departDate)
-  const [returnDate, setReturnDate] = useState(defaultParams.returnDate)
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: strToDate(defaultParams.departDate),
+    to: strToDate(defaultParams.returnDate),
+  })
   const [travelers, setTravelers] = useState(defaultParams.travelers)
 
-  const today = new Date().toISOString().slice(0, 10)
+  function handleCalendarChange(dates: Date | Date[] | DateRange) {
+    if (dates && typeof dates === 'object' && 'from' in dates) {
+      setDateRange(dates as DateRange)
+    }
+  }
 
   function handleSearch() {
     const origin = ORIGINS.find(o => o.airportCode === originCode) ?? ORIGINS[0]
@@ -64,8 +46,8 @@ export function SearchForm({ defaultParams, onSearch }: SearchFormProps) {
       destinationAirport: dest.airportCode,
       destinationCityId: dest.cityId,
       destinationCityName: dest.cityName,
-      departDate,
-      returnDate,
+      departDate: dateRange.from ? dateToStr(dateRange.from) : defaultParams.departDate,
+      returnDate: dateRange.to ? dateToStr(dateRange.to) : defaultParams.returnDate,
       travelers,
     }
 
@@ -73,110 +55,50 @@ export function SearchForm({ defaultParams, onSearch }: SearchFormProps) {
     onSearch(params)
   }
 
-  function handleDepartChange(val: string) {
-    setDepartDate(val)
-    // Ensure return date is never before depart date
-    if (returnDate < val) setReturnDate(val)
-  }
-
   return (
     <>
-      <style>{`
-        .pkg-search-select option { background: #003c8a; color: #fff; }
-        .pkg-search-select::-ms-expand { display: none; }
-      `}</style>
-
-      {/* Origin */}
-      <div style={pillStyle}>
-        <span style={{ fontSize: 14 }}>🛫</span>
-        <select
-          className="pkg-search-select"
-          style={selectStyle}
+      <div className="pkg-search-field">
+        <Select
+          iconLeft="flight_takeoff"
           value={originCode}
-          onChange={e => setOriginCode(e.target.value)}
-          aria-label="Origin airport"
-        >
-          {ORIGINS.map(o => (
-            <option key={o.airportCode} value={o.airportCode}>{o.label}</option>
-          ))}
-        </select>
+          onChange={setOriginCode}
+          menuItems={ORIGINS.map(o => ({ label: o.label, value: o.airportCode }))}
+        />
       </div>
 
-      <span style={{ color: '#b3d4ff', fontWeight: 700, fontSize: 16 }}>→</span>
-
-      {/* Destination */}
-      <div style={pillStyle}>
-        <span style={{ fontSize: 14 }}>🌴</span>
-        <select
-          className="pkg-search-select"
-          style={selectStyle}
+      <div className="pkg-search-field pkg-search-field--dest">
+        <Select
+          iconLeft="flight_land"
           value={destCode}
-          onChange={e => setDestCode(e.target.value)}
-          aria-label="Destination"
-        >
-          {DESTINATIONS.map(d => (
-            <option key={`${d.airportCode}-${d.cityId}`} value={d.airportCode}>{d.label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Dates */}
-      <div style={pillStyle}>
-        <span style={{ fontSize: 13 }}>📅</span>
-        <input
-          type="date"
-          style={inputStyle}
-          value={departDate}
-          min={today}
-          onChange={e => handleDepartChange(e.target.value)}
-          aria-label="Departure date"
-        />
-        <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>–</span>
-        <input
-          type="date"
-          style={inputStyle}
-          value={returnDate}
-          min={departDate || today}
-          onChange={e => setReturnDate(e.target.value)}
-          aria-label="Return date"
+          onChange={setDestCode}
+          menuItems={DESTINATIONS.map(d => ({ label: d.label, value: d.airportCode }))}
         />
       </div>
 
-      {/* Travelers stepper */}
-      <div style={pillStyle}>
-        <span style={{ fontSize: 13 }}>👤</span>
-        <button
-          onClick={() => setTravelers(t => Math.max(1, t - 1))}
-          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 16, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
-          aria-label="Decrease travelers"
-        >−</button>
-        <span style={{ color: '#fff', fontSize: 13, fontWeight: 700, minWidth: 14, textAlign: 'center' }}>{travelers}</span>
-        <button
-          onClick={() => setTravelers(t => Math.min(8, t + 1))}
-          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 16, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
-          aria-label="Increase travelers"
-        >+</button>
-        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginLeft: 2 }}>traveler{travelers !== 1 ? 's' : ''}</span>
+      <div className="pkg-search-field--dates">
+        <DatePicker
+          label="Dates"
+          mode="range"
+          selected={dateRange}
+          handleCalendarChange={handleCalendarChange}
+        />
       </div>
 
-      {/* Search button */}
-      <button
-        onClick={handleSearch}
-        style={{
-          background: '#0068ef',
-          border: 'none',
-          borderRadius: 8,
-          color: '#fff',
-          fontFamily: "'Montserrat', Arial, sans-serif",
-          fontSize: 13,
-          fontWeight: 700,
-          padding: '9px 20px',
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        Search
-      </button>
+      <div className="pkg-search-fixed">
+        <Counter
+          label="Travelers"
+          value={travelers}
+          min={1}
+          max={8}
+          handleValueChange={setTravelers}
+        />
+      </div>
+
+      <div className="pkg-search-fixed">
+        <Button type="primaryShop" size="lg" onClick={handleSearch}>
+          Search
+        </Button>
+      </div>
     </>
   )
 }

@@ -20,6 +20,38 @@ function loadHeader(): Promise<HeaderData> {
   return _promise
 }
 
+function styleViLink(link: HTMLElement) {
+  link.style.color = '#0068ef'
+  link.style.fontWeight = '700'
+  link.style.textDecoration = 'none'
+}
+
+// Inject "Vacation Itineraries" tab after the "Experience" nav item; no-op if already present
+function ensureViTab() {
+  if (document.getElementById('vi-nav-tab')) return
+  const navList = document.querySelector<HTMLElement>('#pcln-global-header .global-header-nav-product-list')
+  if (!navList) return
+  const expItem = [...navList.querySelectorAll('li')].find(li => li.textContent?.trim().toLowerCase().includes('experience'))
+  if (!expItem) return
+
+  const tab = document.createElement('li')
+  tab.id = 'vi-nav-tab'
+  tab.className = expItem.className
+  const anchor = document.createElement('a')
+  anchor.id = 'vi-nav-link'
+  anchor.href = '#'
+  anchor.textContent = 'Vacation Itineraries'
+  const siblingAnchor = expItem.querySelector('a')
+  if (siblingAnchor) anchor.className = siblingAnchor.className
+  styleViLink(anchor)
+  anchor.addEventListener('click', e => {
+    e.preventDefault()
+    window.dispatchEvent(new CustomEvent('vacation-itineraries-tab-click'))
+  })
+  tab.appendChild(anchor)
+  expItem.insertAdjacentElement('afterend', tab)
+}
+
 export function useGlobalHeader() {
   const [data, setData] = useState<HeaderData | null>(_cache)
   useEffect(() => {
@@ -63,7 +95,7 @@ export function GlobalHeader() {
     }
     // The installer script checks domain/GTM conditions that don't apply on localhost.
     // Force all hidden elements visible after scripts have had a tick to run.
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       const sel = (s: string) => document.querySelector<HTMLElement>(s)
       const selAll = (s: string) => [...document.querySelectorAll<HTMLElement>(s)]
       sel('#pcln-global-header #global-header')?.style.setProperty('visibility', 'visible')
@@ -83,6 +115,8 @@ export function GlobalHeader() {
         if (el) el.style.cssText = 'visibility: hidden; opacity: 0; transition: visibility 0s linear 0.2s, opacity 0.2s linear;'
       })
 
+      ensureViTab()
+
       // The bundle's vs() attaches this at load time, before React renders the header.
       // Re-attach here to guarantee it runs after the DOM exists.
       // Re() in the bundle: redirects to /home/join?flow=authenticate&redirecturl=<current>
@@ -96,6 +130,15 @@ export function GlobalHeader() {
         })
       }
     }, 100)
+
+    // The header bundle re-renders the nav after load, which drops the injected tab
+    const headerRoot = document.getElementById('pcln-global-header')
+    const observer = new MutationObserver(ensureViTab)
+    if (headerRoot) observer.observe(headerRoot, { childList: true, subtree: true })
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
   }, [data?.installerHTML])
 
   if (!data?.headerHTML) return null

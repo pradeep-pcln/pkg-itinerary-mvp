@@ -10,13 +10,14 @@ import { SearchForm } from './components/SearchForm'
 import { usePackages, prefetchPackages } from './hooks/usePackages'
 import { cityName, SHARE_PACKAGE_PARAM, shortDate } from './lib/itinerary'
 import type { NormalizedPackage } from './types'
+import { VacationItinerariesLandingPage } from './components/VacationItinerariesLandingPage'
 
 const DEFAULT_SEARCH_PARAMS: SearchParams = {
   originAirport: 'EWR',
   originMetroCode: 'NYC',
-  destinationAirport: 'CUN',
-  destinationCityId: '3000061781',
-  destinationCityName: 'Cancun, Mexico',
+  destinationAirport: 'LHR',
+  destinationCityId: '3000035825',
+  destinationCityName: 'London, United Kingdom',
   departDate: '2026-11-15',
   returnDate: '2026-11-19',
   travelers: 2,
@@ -45,20 +46,33 @@ const GLOBAL_STYLES = `
     align-items: flex-start;
   }
   .pkg-search-bar {
-    background: #003c8a;
+    background: #0068ef;
     position: sticky;
     top: 0;
     z-index: 100;
+  }
+  .pkg-search-bar label {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+  .pkg-search-bar fieldset > span.tabular-nums {
+    color: #fff !important;
   }
   .pkg-search-inner {
     max-width: 1440px;
     margin: 0 auto;
     padding: 12px 24px;
     display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: nowrap;
   }
+  .pkg-search-field { flex: 1 1 190px; min-width: 0; }
+  .pkg-search-field--dest { flex: 1.5 1 270px; }
+  .pkg-search-field--dates { flex: 0 0 270px; }
+  .pkg-search-fixed { flex: 0 0 auto; }
+
+  /* Horizon popovers portal to <body> without a z-index; lift them above the sticky search bar and drawers */
+  [data-base-ui-portal] > [data-side] { z-index: 400 !important; }
   .filter-sidebar-desktop {
     display: none;
   }
@@ -81,12 +95,20 @@ const GLOBAL_STYLES = `
 `
 
 export default function App() {
+  const [view, setView] = useState<'landing' | 'results'>('landing')
   const [searchParams, setSearchParams] = useState<SearchParams>(DEFAULT_SEARCH_PARAMS)
   const { packages, loading, error, fromCache } = usePackages(searchParams)
 
   useEffect(() => {
     prefetchPackages(DEFAULT_SEARCH_PARAMS)
   }, [])
+
+  useEffect(() => {
+    const handleTabClick = () => setView('landing')
+    window.addEventListener('vacation-itineraries-tab-click', handleTabClick)
+    return () => window.removeEventListener('vacation-itineraries-tab-click', handleTabClick)
+  }, [])
+
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [filterOpen, setFilterOpen] = useState(false)
   // Kept separate from `itineraryOpen` so drawer content stays rendered during its close animation
@@ -123,6 +145,22 @@ export default function App() {
     filters.minStars > 0,
     filters.minRating > 0,
   ].filter(Boolean).length
+
+  function handleLandingSearch(params: SearchParams) {
+    setSearchParams(params)
+    setView('results')
+  }
+
+  if (view === 'landing') {
+    return (
+      <div style={{ minHeight: '100vh', fontFamily: "'Montserrat', Arial, sans-serif" }}>
+        <style>{GLOBAL_STYLES}</style>
+        <GlobalHeader />
+        <VacationItinerariesLandingPage defaultParams={searchParams} onSearch={handleLandingSearch} />
+        <GlobalFooter />
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#edf0f3', fontFamily: "'Montserrat', Arial, sans-serif" }}>

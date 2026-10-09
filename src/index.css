@@ -8,3 +8,8 @@
 * {
   box-sizing: border-box;
 }
+
+/* Cap the hero stage image container to 50% of viewport height */
+.vi-hero-image {
+  max-height: 50vh;
+}

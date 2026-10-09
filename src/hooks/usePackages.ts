@@ -102,11 +102,14 @@ export function usePackages(searchParams: SearchParams | null) {
       setLoading(true)
       setFromCache(false)
       setError(null)
+      // searchParams is guarded non-null by the `if (!searchParams) return` above
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const params = searchParams!
       try {
         const res = await fetch(`${import.meta.env.BASE_URL}api/packages`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(searchParams),
+          body: JSON.stringify(params),
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: res.statusText }))
@@ -115,7 +118,7 @@ export function usePackages(searchParams: SearchParams | null) {
         const data = await res.json()
         const pkgs: NormalizedPackage[] = data.packages ?? []
         if (!cancelled) {
-          writeCache(searchParams, pkgs)
+          writeCache(params, pkgs)
           setPackages(pkgs)
           setFromCache(false)
         }
