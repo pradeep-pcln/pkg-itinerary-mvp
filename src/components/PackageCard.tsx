@@ -12,7 +12,7 @@ import {
   Skeleton,
   Span,
 } from '@pcln/horizon'
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import {
   bookUrl,
   buildItineraryDays,
@@ -26,6 +26,8 @@ import {
   tripTitle,
 } from '../lib/itinerary'
 import type { NormalizedPackage } from '../types'
+import { cachedItineraryPlan, subscribeItineraryPlans } from '../hooks/useItinerary'
+import { tripStyleOption } from './itinerary/ShapeTrip'
 import { loadItineraryDrawer } from './itinerary/loadItineraryDrawer'
 
 const CARD_DAY_COUNT = 3
@@ -114,9 +116,15 @@ function SummaryColumn({ pkg, onViewItinerary }: { pkg: NormalizedPackage; onVie
   const days = buildItineraryDays(pkg)
   const preview = days.slice(0, CARD_DAY_COUNT)
   const moreDays = days.length - CARD_DAY_COUNT
+  const plan = useSyncExternalStore(
+    subscribeItineraryPlans,
+    () => cachedItineraryPlan(pkg),
+    () => cachedItineraryPlan(pkg),
+  )
+  const styleMark = plan.style ? tripStyleOption(plan.style) : null
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <div>
         <Heading as="h3" textStyle="heading5" palette="primary" shade="13" className="mb-1">
           {tripTitle(pkg)}
@@ -133,17 +141,27 @@ function SummaryColumn({ pkg, onViewItinerary }: { pkg: NormalizedPackage; onVie
         {pkg.car ? <Badge palette="neutral" emphasis="medium" size="sm" iconLeft="directions_car">Car</Badge> : null}
       </div>
 
-      <ol className="flex flex-col gap-1.5">
-        {preview.map((d) => (
-          <li key={d.day} className="border-l-2 border-primary-4 pl-2.5">
-            <Span textStyle="body2" bold palette="primary" shade="8" className="mr-1.5">Day {d.day}</Span>
-            {d.isFreeDay ? (
-              <Span textStyle="body2" palette="neutral" shade="7">{d.title}</Span>
-            ) : (
-              <Span textStyle="body2" palette="primary" shade="13">{d.title}</Span>
-            )}
-          </li>
-        ))}
+      <ol className="flex min-w-0 flex-col gap-1.5">
+        {preview.map((d) => {
+          const planned = plan.days.find((day) => day.day === d.day)
+          const label = planned ? planned.title : d.isFreeDay ? 'Your day' : d.title
+          return (
+            <li key={d.day} className="flex min-w-0 items-center gap-1.5 overflow-hidden border-l-2 border-primary-4 pl-2.5">
+              <Span textStyle="body2" bold palette="primary" shade="8" className="shrink-0">Day {d.day}</Span>
+              {planned && styleMark && d.isFreeDay ? (
+                <CdnIcon iconName={styleMark.icon} size="16" className="shrink-0" style={{ color: styleMark.accent }} />
+              ) : null}
+              <Span
+                textStyle="body2"
+                palette={planned || !d.isFreeDay ? 'primary' : 'neutral'}
+                shade={planned || !d.isFreeDay ? '13' : '7'}
+                className="block min-w-0 flex-1 truncate"
+              >
+                {label}
+              </Span>
+            </li>
+          )
+        })}
       </ol>
 
       {moreDays > 0 ? (

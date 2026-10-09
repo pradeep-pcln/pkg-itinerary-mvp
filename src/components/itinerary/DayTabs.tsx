@@ -658,13 +658,14 @@ export function DayTabs({
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
+    const section = root
     function onClick(event: MouseEvent) {
       const tab = (event.target as Element | null)?.closest?.('[role="tab"]')
-      if (!(tab instanceof HTMLElement) || !root.contains(tab)) return
-      const tabs = root.querySelectorAll<HTMLElement>('[role="tab"]')
+      if (!(tab instanceof HTMLElement) || !section.contains(tab)) return
+      const tabs = section.querySelectorAll<HTMLElement>('[role="tab"]')
       const index = Array.prototype.indexOf.call(tabs, tab)
       if (String(index + 1) !== value) return
-      alignDayHeader(root)
+      alignDayHeader(section)
     }
     root.addEventListener('click', onClick)
     return () => root.removeEventListener('click', onClick)
